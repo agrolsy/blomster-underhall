@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from typing import Any
+
 import voluptuous as vol
 
 from homeassistant import config_entries
-from homeassistant.helpers import config_validation as cv
+from homeassistant.data_entry_flow import FlowResult
+from homeassistant.helpers import selector
 
 from .const import (
     CONF_BLADE_INTERVAL_HOURS,
@@ -17,30 +20,48 @@ from .const import (
 
 
 class BlomsterMaintenanceConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+    """Handle a config flow for Blomster Underhåll."""
+
     VERSION = 1
 
-    async def async_step_user(self, user_input=None):
+    async def async_step_user(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Create the single integration entry."""
         if user_input is not None:
             await self.async_set_unique_id(DOMAIN)
             self._abort_if_unique_id_configured()
             return self.async_create_entry(title="Blomster Underhåll", data=user_input)
 
-        schema = vol.Schema(
+        data_schema = vol.Schema(
             {
-                vol.Required(CONF_WATER_SOURCE_ENTITY): cv.entity_id,
-                vol.Required(CONF_WATER_INSTALLATION_DATE): cv.date,
+                vol.Required(CONF_WATER_SOURCE_ENTITY): selector.EntitySelector(
+                    selector.EntitySelectorConfig(domain="sensor")
+                ),
+                vol.Required(CONF_WATER_INSTALLATION_DATE): selector.DateSelector(),
                 vol.Required(
                     CONF_BLADE_USAGE_ENTITY,
                     default="sensor.garden_hugo_ii_luba_vpqnssl9_bladanvandningstid",
-                ): cv.entity_id,
+                ): selector.EntitySelector(
+                    selector.EntitySelectorConfig(domain="sensor")
+                ),
                 vol.Required(
                     CONF_BLADE_WARNING_ENTITY,
                     default="sensor.garden_hugo_ii_luba_vpqnssl9_bladslitagevarningstid",
-                ): cv.entity_id,
+                ): selector.EntitySelector(
+                    selector.EntitySelectorConfig(domain="sensor")
+                ),
                 vol.Required(
                     CONF_BLADE_INTERVAL_HOURS,
                     default=DEFAULT_BLADE_INTERVAL_HOURS,
-                ): vol.All(vol.Coerce(float), vol.Range(min=1)),
+                ): selector.NumberSelector(
+                    selector.NumberSelectorConfig(
+                        min=1,
+                        step=1,
+                        mode=selector.NumberSelectorMode.BOX,
+                        unit_of_measurement="h",
+                    )
+                ),
             }
         )
-        return self.async_show_form(step_id="user", data_schema=schema)
+        return self.async_show_form(step_id="user", data_schema=data_schema)
