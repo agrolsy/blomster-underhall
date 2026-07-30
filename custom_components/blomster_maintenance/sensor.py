@@ -2,19 +2,44 @@ from __future__ import annotations
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorStateClass
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import UnitOfVolume
+from homeassistant.const import UnitOfTime, UnitOfVolume
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN, EVENT_MAINTENANCE_UPDATED, EVENT_WATER_UPDATED, WATER_SENSOR_UNIQUE_ID
+from .const import (
+    BLADE_REMAINING_SENSOR_UNIQUE_ID,
+    CONF_BLADE_INTERVAL_HOURS,
+    CONF_BLADE_USAGE_ENTITY,
+    DOMAIN,
+    EVENT_MAINTENANCE_UPDATED,
+    EVENT_WATER_UPDATED,
+    WATER_SENSOR_UNIQUE_ID,
+)
 from .storage import MaintenanceStore
+
+
+def _state_hours(hass: HomeAssistant, entity_id: str) -> float | None:
+    state = hass.states.get(entity_id)
+    if state is None or state.state in {"unknown", "unavailable"}:
+        return None
+    try:
+        value = float(state.state)
+    except (TypeError, ValueError):
+        return None
+    unit = state.attributes.get("unit_of_measurement")
+    if unit in {"s", "sec", "seconds"}:
+        return value / 3600
+    if unit in {"min", "minutes"}:
+        return value / 60
+    return value
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
     store: MaintenanceStore = hass.data[DOMAIN][entry.entry_id]
     water = WaterTotalSensor(store)
+    blade = BladeRemainingSensor(hass, entry)
     entities: dict[str, MaintenanceSensor] = {}
-    async_add_entities([water])
+    async_add_entities([water, blade])
 
     @callback
     def sync_water(_event=None) -> None:
@@ -63,6 +88,35 @@ class WaterTotalSensor(SensorEntity):
             "last_source_value": water.last_source_value,
             "last_updated": water.last_updated,
             "method": "manual_baseline_plus_daily_delta",
+        }
+
+
+class BladeRemainingSensor(SensorEntity):
+    _attr_name = "Luba blad återstående tid"
+    _attr_unique_id = BLADE_REMAINING_SENSOR_UNIQUE_ID
+    _attr_icon = "mdi:content-cut"
+    _attr_native_unit_of_measurement = UnitOfTime.HOURS
+    _attr_device_class = SensorDeviceClass.DURATION
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_suggested_display_precision = 1
+
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+        self.hass = hass
+        self._usage_entity = entry.data[CONF_BLADE_USAGE_ENTITY]
+        self._interval = float(entry.data[CONF_BLADE_INTERVAL_HOURS])
+
+    @property
+    def native_value(self) -> float | None:
+        used = _state_hours(self.hass, self._usage_entity)
+        return None if used is None else round(max(0.0, self._interval - used), 2)
+
+    @property
+    def extra_state_attributes(self):
+        used = _state_hours(self.hass, self._usage_entity)
+        return {
+            "usage_entity": self._usage_entity,
+            "used_hours": used,
+            "replacement_interval_hours": self._interval,
         }
 
 
