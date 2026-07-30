@@ -1,90 +1,122 @@
 # Blomster Underhåll
 
-En Home Assistant-integration för att samla husets underhåll, servicehistorik och påminnelser på ett ställe.
+En egen Home Assistant-integration för husets underhåll, servicehistorik och mätarbaserade påminnelser.
 
-Integrationen är tänkt att bli husets digitala underhållsregister. Den ska kunna hantera både manuellt registrerade åtgärder och servicebehov som kommer direkt från andra Home Assistant-entiteter.
+Första testversionen hanterar:
 
-## Planerade användningsfall
-
-- vattenfilter, baserat på verklig vattenförbrukning
-- knivbyte på robotgräsklippare, baserat på Mammotions servicevarning
-- ventilationsfilter och annan tidsstyrd service
-- underhåll baserat på drifttimmar, mätarställning eller externa varningssensorer
-- visning av aktuella underhållsbehov på Home Assistant-dashboarden
-- återkommande notifieringar tills en åtgärd har kvitterats
-- historik över när en åtgärd utfördes och vilket mätvärde som gällde då
+- egen beständig total för vattenförbrukning
+- vattenfilterbyten med sparad mätarställning
+- Mammotion Luba-blad med 150 timmars bytesintervall
+- både bladens användningstid och Mammotions egen slitagevarning
 
 ## Vattenförbrukning
 
-Grohe Sense exponerar i detta fall ett dagsvärde som återställs, inte en livstidstotal. Integrationen ska därför:
-
-1. läsa historiska dagsvärden ur Home Assistants Recorder
-2. börja från vattenmätarens installationsdatum, 6 juli 2026
-3. summera värdeökningar inom varje dag
-4. tolka ett lägre värde som en ny dagsperiod
-5. skapa en egen beständig totalsensor
-6. fortsätta ackumulera förbrukningen live efter historikimporten
-
-Den egna totalsensorn används sedan som mätarställning när exempelvis ett vattenfilter byts.
-
-## Datalagring
-
-Integrationsdata lagras lokalt med Home Assistants Store-API under `.storage`.
-
-Det innebär att datan:
-
-- inte versionshanteras i Git
-- följer med vanliga Home Assistant-backuper
-- hålls skild från Recorder-databasen
-- kan innehålla beständig underhållshistorik även om vanlig tillståndshistorik rensas
-
-## Installation
-
-Projektet är under utveckling och är ännu inte redo för vanlig installation via HACS.
-
-Den planerade strukturen är:
+Grohe-entiteten som ska användas är dagsförbrukningen:
 
 ```text
-custom_components/
-└── blomster_maintenance/
-    ├── __init__.py
-    ├── config_flow.py
-    ├── const.py
-    ├── manifest.json
-    ├── sensor.py
-    ├── services.yaml
-    ├── storage.py
-    ├── strings.json
-    └── translations/
-        └── sv.json
+sensor.garage_vattenmatare_water_consumption
 ```
 
-När en första testbar version finns ska installation kunna ske genom HACS som ett eget repository, eller manuellt genom att kopiera integrationsmappen till:
+Den återställs dagligen. Integrationen sparar därför en egen total och lägger till förändringen i dagsvärdet. Ett lägre värde tolkas som att en ny dag har börjat.
+
+Mätaren installerades den 6 juli 2026, men Home Assistant saknar hela historiken. Grohe-appen visade därför den korrekta baslinjen:
+
+```text
+14 839 L
+```
+
+Efter installation ska tjänsten `blomster_maintenance.set_water_baseline` köras en gång med `14839`. Tjänsten sparar samtidigt Grohes aktuella dagsvärde så att dagens förbrukning inte dubbelräknas.
+
+Integrationen skapar:
+
+```text
+sensor.ackumulerad_vattenforbrukning
+```
+
+## Mammotion Luba-blad
+
+Följande entiteter används:
+
+```text
+sensor.garden_hugo_ii_luba_vpqnssl9_bladanvandningstid
+sensor.garden_hugo_ii_luba_vpqnssl9_bladslitagevarningstid
+```
+
+Bladen ska bytas efter 150 timmars användning. Integrationen skapar:
+
+```text
+sensor.luba_blad_aterstaende_tid
+binary_sensor.luba_blad_behover_bytas
+```
+
+Varningen blir aktiv när antingen användningstiden når 150 timmar eller Mammotions egen slitagevarning är aktiv.
+
+## Underhållshistorik
+
+Tjänsten `blomster_maintenance.record_maintenance` sparar datum, anteckning och aktuell ackumulerad vattenförbrukning. Datan lagras lokalt med Home Assistants Store-API under `.storage` och följer med vanliga Home Assistant-backuper.
+
+Exempel för vattenfilter:
+
+```yaml
+action: blomster_maintenance.record_maintenance
+data:
+  item_id: vattenfilter
+  name: Vattenfilter
+  note: Nytt filter monterat 30 juli 2026. Intervall ännu okänt.
+```
+
+## Installation via HACS
+
+1. Öppna HACS.
+2. Gå till Integrations.
+3. Öppna menyn och välj Custom repositories.
+4. Lägg till:
+
+   ```text
+   https://github.com/agrolsy/blomster-underhall
+   ```
+
+5. Välj kategorin Integration.
+6. Installera Blomster Underhåll.
+7. Starta om Home Assistant.
+8. Gå till Inställningar → Enheter och tjänster → Lägg till integration.
+9. Sök efter Blomster Underhåll.
+
+Vid konfiguration används:
+
+```text
+Grohe dagsförbrukning:
+sensor.garage_vattenmatare_water_consumption
+
+Installationsdatum:
+2026-07-06
+
+Bladanvändningstid:
+sensor.garden_hugo_ii_luba_vpqnssl9_bladanvandningstid
+
+Bladslitagevarning:
+sensor.garden_hugo_ii_luba_vpqnssl9_bladslitagevarningstid
+
+Bytesintervall:
+150 timmar
+```
+
+## Manuell installation
+
+Kopiera katalogen:
+
+```text
+custom_components/blomster_maintenance
+```
+
+till:
 
 ```text
 /config/custom_components/blomster_maintenance
 ```
 
-Därefter startas Home Assistant om och integrationen läggs till via:
-
-```text
-Inställningar → Enheter och tjänster → Lägg till integration
-```
+Starta sedan om Home Assistant och lägg till integrationen från gränssnittet.
 
 ## Status
 
-Första implementationen utvecklas initialt i projektet BlomstersSambandscentral och flyttas hit som ett fristående publikt HACS-repository.
-
-När koden har flyttats hit återstår bland annat:
-
-- verifiering mot aktuell Home Assistant-version
-- val av exakt Grohe-entitet
-- test av historikimport från 6 juli 2026
-- registrering av första vattenfilterbytet
-- koppling till Mammotions knivbytesvarning
-- dashboardkort och notifieringar
-- tester och versionshantering för HACS
-
-## Licens
-
-Licens väljs innan den första publika releasen.
+Detta är version `0.1.0` och ska testas i den aktuella Home Assistant-installationen innan den betraktas som stabil. Nästa steg är dashboardkort, kvitteringsknappar och återkommande notifieringar.
