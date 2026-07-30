@@ -4,6 +4,10 @@ STORAGE_KEY = f"{DOMAIN}.data"
 
 CONF_WATER_SOURCE_ENTITY = "water_source_entity"
 CONF_WATER_INSTALLATION_DATE = "water_installation_date"
+CONF_BLADE_USAGE_ENTITY = "blade_usage_entity"
+CONF_BLADE_WARNING_ENTITY = "blade_warning_entity"
+CONF_BLADE_INTERVAL_HOURS = "blade_interval_hours"
+DEFAULT_BLADE_INTERVAL_HOURS = 150.0
 
 SERVICE_SET_WATER_BASELINE = "set_water_baseline"
 SERVICE_RECORD_MAINTENANCE = "record_maintenance"
@@ -14,5 +18,7 @@ ATTR_NAME = "name"
 ATTR_NOTE = "note"
 
 WATER_SENSOR_UNIQUE_ID = f"{DOMAIN}_water_total"
+BLADE_REMAINING_SENSOR_UNIQUE_ID = f"{DOMAIN}_blade_remaining"
+BLADE_DUE_BINARY_SENSOR_UNIQUE_ID = f"{DOMAIN}_blade_due"
 EVENT_WATER_UPDATED = f"{DOMAIN}_water_updated"
 EVENT_MAINTENANCE_UPDATED = f"{DOMAIN}_maintenance_updated"
