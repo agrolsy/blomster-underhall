@@ -1,0 +1,21 @@
+{
+  "title": "Blomster Underhåll",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Konfigurera Blomster Underhåll",
+        "description": "Välj Grohes dagsförbrukning och Mammotions sensorer för bladens användning och slitagevarning.",
+        "data": {
+          "water_source_entity": "Grohe dagsförbrukning",
+          "water_installation_date": "Vattenmätarens installationsdatum",
+          "blade_usage_entity": "Bladanvändningstid",
+          "blade_warning_entity": "Bladslitagevarning",
+          "blade_interval_hours": "Bytesintervall för blad i timmar"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "Integrationen är redan konfigurerad."
+    }
+  }
+}
