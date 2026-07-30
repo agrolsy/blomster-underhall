@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Home Assistant runtime and local configuration
+.storage/
+home-assistant_v2.db*
+*.log
+*.log.*
+secrets.yaml
+known_devices.yaml
+deps/
+.tts/
+.cloud/
+
+# Editor and operating system files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Build and packaging
+build/
+dist/
+*.egg-info/
+*.zip
+
+# Local development files
+.env
+.env.*
+!.env.example
