@@ -14,7 +14,7 @@ set_water_baseline:
 
 record_maintenance:
   name: Registrera underhåll
-  description: Sparar en underhållshändelse med aktuell ackumulerad vattenförbrukning.
+  description: Sparar en underhållshändelse och kan samtidigt läsa av en relevant mätarentitet, exempelvis Luba-timmar eller vattenförbrukning.
   fields:
     item_id:
       name: ID
@@ -26,6 +26,13 @@ record_maintenance:
       required: true
       selector:
         text:
+    meter_entity:
+      name: Mätarentitet
+      description: Valfri sensor vars aktuella värde och enhet ska sparas med underhållshändelsen.
+      required: false
+      selector:
+        entity:
+          domain: sensor
     note:
       name: Anteckning
       required: false
