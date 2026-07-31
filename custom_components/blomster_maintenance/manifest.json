@@ -1,7 +1,7 @@
 {
   "domain": "blomster_maintenance",
   "name": "Blomster Underhåll",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "documentation": "https://github.com/agrolsy/blomster-underhall",
   "issue_tracker": "https://github.com/agrolsy/blomster-underhall/issues",
   "codeowners": ["@agrolsy"],
