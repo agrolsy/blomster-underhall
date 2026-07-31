@@ -3,10 +3,11 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from homeassistant.components import frontend, lovelace
+from homeassistant.components import frontend
 from homeassistant.components.lovelace.const import LOVELACE_DATA, MODE_STORAGE
 from homeassistant.components.lovelace.dashboard import DashboardsCollection, LovelaceStorage
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -120,10 +121,9 @@ async def _async_register_resource(resources: Any) -> None:
         )
         return
 
-    items = resources.async_items() if getattr(resources, "loaded", False) else []
     if not getattr(resources, "loaded", False) and hasattr(resources, "_async_ensure_loaded"):
         await resources._async_ensure_loaded()  # noqa: SLF001 - HA exposes no public loader
-        items = resources.async_items()
+    items = resources.async_items()
 
     for item in items or []:
         url = str(item.get("url", ""))
@@ -179,5 +179,5 @@ async def _async_register_dashboard(hass: HomeAssistant, lovelace_data: Any) -> 
 
     try:
         await dashboard_store.async_load(False)
-    except Exception:  # Dashboard is new and has no config yet.
+    except HomeAssistantError:
         await dashboard_store.async_save(DASHBOARD_CONFIG)
