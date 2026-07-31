@@ -39,11 +39,33 @@ def _state_hours(hass: HomeAssistant, entity_id: str) -> float | None:
     return value
 
 
+def _live_accumulated_liters(hass: HomeAssistant, store: MaintenanceStore) -> float:
+    """Return stored accumulated water plus any not-yet-processed live source delta."""
+    accumulated = store.water.accumulated_liters
+    source_entity = store.water.source_entity
+    previous = store.water.last_source_value
+    if not source_entity or previous is None:
+        return accumulated
+
+    state = hass.states.get(source_entity)
+    if state is None or state.state in {"unknown", "unavailable"}:
+        return accumulated
+    try:
+        current = float(state.state)
+    except (TypeError, ValueError):
+        return accumulated
+
+    # The source is a daily counter. If it resets at midnight, today's current
+    # value is the delta. Otherwise only add the increase since last processing.
+    pending_delta = current - previous if current >= previous else current
+    return accumulated + max(0.0, pending_delta)
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
     store: MaintenanceStore = hass.data[DOMAIN][entry.entry_id]
-    water = WaterTotalSensor(store)
+    water = WaterTotalSensor(hass, store)
     blade = BladeRemainingSensor(hass, entry)
-    water_since_filter = WaterSinceFilterSensor(store)
+    water_since_filter = WaterSinceFilterSensor(hass, store)
     entities: dict[str, MaintenanceSensor] = {
         item_id: MaintenanceSensor(store, item_id, name)
         for item_id, name in _PREDEFINED_ITEMS.items()
@@ -82,12 +104,13 @@ class WaterTotalSensor(SensorEntity):
     _attr_state_class = SensorStateClass.TOTAL_INCREASING
     _attr_suggested_display_precision = 1
 
-    def __init__(self, store: MaintenanceStore) -> None:
+    def __init__(self, hass: HomeAssistant, store: MaintenanceStore) -> None:
+        self.hass = hass
         self._store = store
 
     @property
     def native_value(self) -> float:
-        return round(self._store.water.accumulated_liters, 3)
+        return round(_live_accumulated_liters(self.hass, self._store), 3)
 
     @property
     def extra_state_attributes(self):
@@ -97,7 +120,7 @@ class WaterTotalSensor(SensorEntity):
             "installation_date": water.installation_date,
             "last_source_value": water.last_source_value,
             "last_updated": water.last_updated,
-            "method": "manual_baseline_plus_daily_delta",
+            "method": "manual_baseline_plus_live_daily_delta",
         }
 
 
@@ -110,7 +133,8 @@ class WaterSinceFilterSensor(SensorEntity):
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_suggested_display_precision = 1
 
-    def __init__(self, store: MaintenanceStore) -> None:
+    def __init__(self, hass: HomeAssistant, store: MaintenanceStore) -> None:
+        self.hass = hass
         self._store = store
 
     @property
@@ -121,7 +145,8 @@ class WaterSinceFilterSensor(SensorEntity):
         baseline = item.events[-1].meter_value
         if baseline is None:
             return None
-        return round(max(0.0, self._store.water.accumulated_liters - baseline), 3)
+        current_total = _live_accumulated_liters(self.hass, self._store)
+        return round(max(0.0, current_total - baseline), 3)
 
     @property
     def extra_state_attributes(self):
@@ -130,6 +155,8 @@ class WaterSinceFilterSensor(SensorEntity):
         return {
             "last_filter_change": last_event.performed_at if last_event else None,
             "baseline_liters": last_event.meter_value if last_event else None,
+            "current_total_liters": round(_live_accumulated_liters(self.hass, self._store), 3),
+            "source_entity": self._store.water.source_entity,
             "status": "Aldrig registrerat" if last_event is None else "Registrerat",
         }
 
