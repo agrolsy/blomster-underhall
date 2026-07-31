@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from typing import Any
+from uuid import uuid4
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
@@ -12,17 +13,31 @@ from .const import STORAGE_KEY, STORAGE_VERSION
 
 @dataclass(slots=True)
 class MaintenanceEvent:
+    event_id: str
     performed_at: str
     meter_value: float | None = None
     meter_entity: str | None = None
     meter_unit: str | None = None
     note: str | None = None
+    cost: float | None = None
 
 
 @dataclass(slots=True)
 class MaintenanceItem:
     item_id: str
     name: str
+    category: str | None = None
+    location: str | None = None
+    manufacturer: str | None = None
+    model: str | None = None
+    serial_number: str | None = None
+    installed_at: str | None = None
+    interval_type: str | None = None
+    interval_value: float | None = None
+    meter_entity: str | None = None
+    manual_url: str | None = None
+    receipt_url: str | None = None
+    image_url: str | None = None
     events: list[MaintenanceEvent] = field(default_factory=list)
 
 
@@ -44,14 +59,35 @@ class MaintenanceStore:
     async def async_load(self) -> None:
         raw = await self._store.async_load() or {}
         self.water = WaterAccumulator(**raw.get("water", {}))
-        self.items = {
-            item["item_id"]: MaintenanceItem(
-                item_id=item["item_id"],
-                name=item["name"],
-                events=[MaintenanceEvent(**event) for event in item.get("events", [])],
-            )
-            for item in raw.get("items", [])
-        }
+        migrated = False
+        items: dict[str, MaintenanceItem] = {}
+        for raw_item in raw.get("items", []):
+            item_data = dict(raw_item)
+            raw_events = item_data.pop("events", [])
+            events: list[MaintenanceEvent] = []
+            for raw_event in raw_events:
+                event_data = dict(raw_event)
+                if not event_data.get("event_id"):
+                    event_data["event_id"] = uuid4().hex
+                    migrated = True
+                event_data.setdefault("cost", None)
+                events.append(MaintenanceEvent(**event_data))
+            item_data.setdefault("category", None)
+            item_data.setdefault("location", None)
+            item_data.setdefault("manufacturer", None)
+            item_data.setdefault("model", None)
+            item_data.setdefault("serial_number", None)
+            item_data.setdefault("installed_at", None)
+            item_data.setdefault("interval_type", None)
+            item_data.setdefault("interval_value", None)
+            item_data.setdefault("meter_entity", None)
+            item_data.setdefault("manual_url", None)
+            item_data.setdefault("receipt_url", None)
+            item_data.setdefault("image_url", None)
+            items[item_data["item_id"]] = MaintenanceItem(**item_data, events=events)
+        self.items = items
+        if migrated:
+            await self.async_save()
 
     async def async_save(self) -> None:
         await self._store.async_save(
@@ -86,6 +122,16 @@ class MaintenanceStore:
         await self.async_save()
         return True
 
+    async def async_configure_item(self, item_id: str, name: str, **values: Any) -> MaintenanceItem:
+        item = self.items.get(item_id) or MaintenanceItem(item_id=item_id, name=name)
+        item.name = name
+        for key, value in values.items():
+            if hasattr(item, key):
+                setattr(item, key, value)
+        self.items[item_id] = item
+        await self.async_save()
+        return item
+
     async def async_record(
         self,
         item_id: str,
@@ -94,18 +140,31 @@ class MaintenanceStore:
         meter_entity: str | None,
         meter_unit: str | None,
         note: str | None,
-    ) -> MaintenanceItem:
+        cost: float | None = None,
+    ) -> MaintenanceEvent:
         item = self.items.get(item_id) or MaintenanceItem(item_id=item_id, name=name)
         item.name = name
-        item.events.append(
-            MaintenanceEvent(
-                performed_at=datetime.now().astimezone().isoformat(),
-                meter_value=meter_value,
-                meter_entity=meter_entity,
-                meter_unit=meter_unit,
-                note=note,
-            )
+        event = MaintenanceEvent(
+            event_id=uuid4().hex,
+            performed_at=datetime.now().astimezone().isoformat(),
+            meter_value=meter_value,
+            meter_entity=meter_entity,
+            meter_unit=meter_unit,
+            note=note,
+            cost=cost,
         )
+        item.events.append(event)
         self.items[item_id] = item
         await self.async_save()
-        return item
+        return event
+
+    async def async_delete_event(self, item_id: str, event_id: str) -> bool:
+        item = self.items.get(item_id)
+        if item is None:
+            return False
+        remaining = [event for event in item.events if event.event_id != event_id]
+        if len(remaining) == len(item.events):
+            return False
+        item.events = remaining
+        await self.async_save()
+        return True

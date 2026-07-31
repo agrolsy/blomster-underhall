@@ -1,6 +1,6 @@
 set_water_baseline:
   name: Ange vattenbaslinje
-  description: Sätter den korrekta ackumulerade vattenförbrukningen och sparar samtidigt dagens aktuella Grohe-värde för att undvika dubbelräkning.
+  description: Sätter korrekt ackumulerad vattenförbrukning och sparar dagens aktuella källvärde.
   fields:
     baseline_liters:
       name: Baslinje
@@ -12,30 +12,101 @@ set_water_baseline:
           unit_of_measurement: L
           mode: box
 
-record_maintenance:
-  name: Registrera underhåll
-  description: Sparar en underhållshändelse och kan samtidigt läsa av en relevant mätarentitet, exempelvis Luba-timmar eller vattenförbrukning.
+configure_item:
+  name: Skapa eller uppdatera serviceobjekt
+  description: Skapar ett underhållsobjekt och sparar metadata, dokumentlänkar samt serviceintervall.
   fields:
     item_id:
       name: ID
       required: true
-      selector:
-        text:
+      selector: {text: {}}
     name:
       name: Namn
       required: true
+      selector: {text: {}}
+    category:
+      name: Kategori
+      selector: {text: {}}
+    location:
+      name: Placering
+      selector: {text: {}}
+    manufacturer:
+      name: Tillverkare
+      selector: {text: {}}
+    model:
+      name: Modell
+      selector: {text: {}}
+    serial_number:
+      name: Serienummer
+      selector: {text: {}}
+    installed_at:
+      name: Installationsdatum
+      selector: {date: {}}
+    interval_type:
+      name: Intervalltyp
       selector:
-        text:
+        select:
+          options:
+            - {value: days, label: Dagar}
+            - {value: liters, label: Liter}
+            - {value: hours, label: Timmar}
+            - {value: starts, label: Antal starter}
+    interval_value:
+      name: Intervall
+      selector:
+        number: {min: 0, step: 0.1, mode: box}
     meter_entity:
       name: Mätarentitet
-      description: Valfri sensor vars aktuella värde och enhet ska sparas med underhållshändelsen.
-      required: false
       selector:
-        entity:
-          domain: sensor
+        entity: {domain: sensor}
+    manual_url:
+      name: Manual
+      description: Lokal eller extern URL.
+      selector: {text: {}}
+    receipt_url:
+      name: Kvitto
+      description: Lokal eller extern URL.
+      selector: {text: {}}
+    image_url:
+      name: Bild
+      description: Lokal eller extern URL.
+      selector: {text: {}}
+
+record_maintenance:
+  name: Registrera underhåll
+  description: Sparar en underhållshändelse med mätarställning, anteckning och kostnad.
+  fields:
+    item_id:
+      name: ID
+      required: true
+      selector: {text: {}}
+    name:
+      name: Namn
+      required: true
+      selector: {text: {}}
+    meter_entity:
+      name: Mätarentitet
+      description: Om fältet lämnas tomt används objektets konfigurerade mätarentitet.
+      selector:
+        entity: {domain: sensor}
+    cost:
+      name: Kostnad
+      selector:
+        number: {min: 0, step: 0.01, unit_of_measurement: kr, mode: box}
     note:
       name: Anteckning
-      required: false
       selector:
-        text:
-          multiline: true
+        text: {multiline: true}
+
+delete_maintenance:
+  name: Ta bort underhållspost
+  description: Tar bort exakt en händelse med objektets ID och händelsens unika ID.
+  fields:
+    item_id:
+      name: Underhålls-ID
+      required: true
+      selector: {text: {}}
+    event_id:
+      name: Händelse-ID
+      required: true
+      selector: {text: {}}

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta
+
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorStateClass
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfTime, UnitOfVolume
@@ -13,25 +15,32 @@ from .const import (
     DOMAIN,
     EVENT_MAINTENANCE_UPDATED,
     EVENT_WATER_UPDATED,
+    SERVICEBOOK_SENSOR_UNIQUE_ID,
     WATER_SENSOR_UNIQUE_ID,
 )
-from .storage import MaintenanceStore
+from .storage import MaintenanceItem, MaintenanceStore
 
-_PREDEFINED_ITEMS = {
-    "luba_blades": "Luba-knivar",
-    "water_filter": "Vattenfilter",
-}
+_PREDEFINED_ITEMS = {"luba_blades": "Luba-knivar", "water_filter": "Vattenfilter"}
 
 
-def _state_hours(hass: HomeAssistant, entity_id: str) -> float | None:
+def _numeric_state(hass: HomeAssistant, entity_id: str | None) -> float | None:
+    if not entity_id:
+        return None
     state = hass.states.get(entity_id)
     if state is None or state.state in {"unknown", "unavailable"}:
         return None
     try:
-        value = float(state.state)
+        return float(state.state)
     except (TypeError, ValueError):
         return None
-    unit = state.attributes.get("unit_of_measurement")
+
+
+def _state_hours(hass: HomeAssistant, entity_id: str) -> float | None:
+    value = _numeric_state(hass, entity_id)
+    if value is None:
+        return None
+    state = hass.states.get(entity_id)
+    unit = state.attributes.get("unit_of_measurement") if state else None
     if unit in {"s", "sec", "seconds"}:
         return value / 3600
     if unit in {"min", "minutes"}:
@@ -40,25 +49,43 @@ def _state_hours(hass: HomeAssistant, entity_id: str) -> float | None:
 
 
 def _live_accumulated_liters(hass: HomeAssistant, store: MaintenanceStore) -> float:
-    """Return stored accumulated water plus any not-yet-processed live source delta."""
     accumulated = store.water.accumulated_liters
     source_entity = store.water.source_entity
     previous = store.water.last_source_value
-    if not source_entity or previous is None:
+    current = _numeric_state(hass, source_entity)
+    if current is None or previous is None:
         return accumulated
-
-    state = hass.states.get(source_entity)
-    if state is None or state.state in {"unknown", "unavailable"}:
-        return accumulated
-    try:
-        current = float(state.state)
-    except (TypeError, ValueError):
-        return accumulated
-
-    # The source is a daily counter. If it resets at midnight, today's current
-    # value is the delta. Otherwise only add the increase since last processing.
     pending_delta = current - previous if current >= previous else current
     return accumulated + max(0.0, pending_delta)
+
+
+def _item_status(hass: HomeAssistant, item: MaintenanceItem) -> dict:
+    if not item.interval_type or not item.interval_value:
+        return {"status": "not_configured", "remaining": None, "next_due": None}
+    if not item.events:
+        return {"status": "never", "remaining": 0, "next_due": None}
+
+    last = item.events[-1]
+    remaining: float | None = None
+    next_due: str | None = None
+    if item.interval_type == "days":
+        due = datetime.fromisoformat(last.performed_at) + timedelta(days=item.interval_value)
+        remaining = (due - datetime.now().astimezone()).total_seconds() / 86400
+        next_due = due.isoformat()
+    else:
+        current = _numeric_state(hass, item.meter_entity)
+        if current is not None and last.meter_value is not None:
+            remaining = item.interval_value - max(0.0, current - last.meter_value)
+
+    if remaining is None:
+        status = "unknown"
+    elif remaining <= 0:
+        status = "overdue"
+    elif remaining <= max(1.0, item.interval_value * 0.1):
+        status = "due_soon"
+    else:
+        status = "ok"
+    return {"status": status, "remaining": round(remaining, 2) if remaining is not None else None, "next_due": next_due}
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
@@ -66,23 +93,25 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     water = WaterTotalSensor(hass, store)
     blade = BladeRemainingSensor(hass, entry)
     water_since_filter = WaterSinceFilterSensor(hass, store)
+    servicebook = ServiceBookSensor(hass, store)
     entities: dict[str, MaintenanceSensor] = {
-        item_id: MaintenanceSensor(store, item_id, name)
+        item_id: MaintenanceSensor(hass, store, item_id, name)
         for item_id, name in _PREDEFINED_ITEMS.items()
     }
-    async_add_entities([water, blade, water_since_filter, *entities.values()])
+    async_add_entities([water, blade, water_since_filter, servicebook, *entities.values()])
 
     @callback
     def sync_water(_event=None) -> None:
         water.async_write_ha_state()
         water_since_filter.async_write_ha_state()
+        servicebook.async_write_ha_state()
 
     @callback
     def sync_items(_event=None) -> None:
         new_entities = []
         for item_id, item in store.items.items():
             if item_id not in entities:
-                entity = MaintenanceSensor(store, item_id, item.name)
+                entity = MaintenanceSensor(hass, store, item_id, item.name)
                 entities[item_id] = entity
                 new_entities.append(entity)
         if new_entities:
@@ -90,6 +119,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
         for entity in entities.values():
             entity.async_write_ha_state()
         water_since_filter.async_write_ha_state()
+        servicebook.async_write_ha_state()
 
     entry.async_on_unload(hass.bus.async_listen(EVENT_WATER_UPDATED, sync_water))
     entry.async_on_unload(hass.bus.async_listen(EVENT_MAINTENANCE_UPDATED, sync_items))
@@ -102,7 +132,6 @@ class WaterTotalSensor(SensorEntity):
     _attr_native_unit_of_measurement = UnitOfVolume.LITERS
     _attr_device_class = SensorDeviceClass.WATER
     _attr_state_class = SensorStateClass.TOTAL_INCREASING
-    _attr_suggested_display_precision = 1
 
     def __init__(self, hass: HomeAssistant, store: MaintenanceStore) -> None:
         self.hass = hass
@@ -114,14 +143,7 @@ class WaterTotalSensor(SensorEntity):
 
     @property
     def extra_state_attributes(self):
-        water = self._store.water
-        return {
-            "source_entity": water.source_entity,
-            "installation_date": water.installation_date,
-            "last_source_value": water.last_source_value,
-            "last_updated": water.last_updated,
-            "method": "manual_baseline_plus_live_daily_delta",
-        }
+        return {"source_entity": self._store.water.source_entity, "installation_date": self._store.water.installation_date}
 
 
 class WaterSinceFilterSensor(SensorEntity):
@@ -131,7 +153,6 @@ class WaterSinceFilterSensor(SensorEntity):
     _attr_native_unit_of_measurement = UnitOfVolume.LITERS
     _attr_device_class = SensorDeviceClass.WATER
     _attr_state_class = SensorStateClass.MEASUREMENT
-    _attr_suggested_display_precision = 1
 
     def __init__(self, hass: HomeAssistant, store: MaintenanceStore) -> None:
         self.hass = hass
@@ -140,25 +161,9 @@ class WaterSinceFilterSensor(SensorEntity):
     @property
     def native_value(self) -> float | None:
         item = self._store.items.get("water_filter")
-        if not item or not item.events:
+        if not item or not item.events or item.events[-1].meter_value is None:
             return None
-        baseline = item.events[-1].meter_value
-        if baseline is None:
-            return None
-        current_total = _live_accumulated_liters(self.hass, self._store)
-        return round(max(0.0, current_total - baseline), 3)
-
-    @property
-    def extra_state_attributes(self):
-        item = self._store.items.get("water_filter")
-        last_event = item.events[-1] if item and item.events else None
-        return {
-            "last_filter_change": last_event.performed_at if last_event else None,
-            "baseline_liters": last_event.meter_value if last_event else None,
-            "current_total_liters": round(_live_accumulated_liters(self.hass, self._store), 3),
-            "source_entity": self._store.water.source_entity,
-            "status": "Aldrig registrerat" if last_event is None else "Registrerat",
-        }
+        return round(max(0.0, _live_accumulated_liters(self.hass, self._store) - item.events[-1].meter_value), 3)
 
 
 class BladeRemainingSensor(SensorEntity):
@@ -168,7 +173,6 @@ class BladeRemainingSensor(SensorEntity):
     _attr_native_unit_of_measurement = UnitOfTime.HOURS
     _attr_device_class = SensorDeviceClass.DURATION
     _attr_state_class = SensorStateClass.MEASUREMENT
-    _attr_suggested_display_precision = 1
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         self.hass = hass
@@ -180,20 +184,46 @@ class BladeRemainingSensor(SensorEntity):
         used = _state_hours(self.hass, self._usage_entity)
         return None if used is None else round(max(0.0, self._interval - used), 2)
 
+
+class ServiceBookSensor(SensorEntity):
+    _attr_name = "Servicebok"
+    _attr_unique_id = SERVICEBOOK_SENSOR_UNIQUE_ID
+    _attr_icon = "mdi:book-wrench"
+
+    def __init__(self, hass: HomeAssistant, store: MaintenanceStore) -> None:
+        self.hass = hass
+        self._store = store
+
+    @property
+    def native_value(self) -> int:
+        return sum(1 for item in self._store.items.values() if _item_status(self.hass, item)["status"] == "overdue")
+
     @property
     def extra_state_attributes(self):
-        used = _state_hours(self.hass, self._usage_entity)
+        year = datetime.now().year
+        rows = []
+        total_cost = 0.0
+        for item in self._store.items.values():
+            status = _item_status(self.hass, item)
+            rows.append({"item_id": item.item_id, "name": item.name, **status})
+            total_cost += sum(event.cost or 0 for event in item.events if datetime.fromisoformat(event.performed_at).year == year)
         return {
-            "usage_entity": self._usage_entity,
-            "used_hours": used,
-            "replacement_interval_hours": self._interval,
+            "overdue": [row for row in rows if row["status"] == "overdue"],
+            "upcoming": [row for row in rows if row["status"] == "due_soon"],
+            "latest": sorted(
+                [{"item_id": item.item_id, "name": item.name, "performed_at": item.events[-1].performed_at} for item in self._store.items.values() if item.events],
+                key=lambda row: row["performed_at"], reverse=True,
+            )[:10],
+            "total_cost_year": round(total_cost, 2),
+            "year": year,
         }
 
 
 class MaintenanceSensor(SensorEntity):
     _attr_icon = "mdi:tools"
 
-    def __init__(self, store: MaintenanceStore, item_id: str, default_name: str) -> None:
+    def __init__(self, hass: HomeAssistant, store: MaintenanceStore, item_id: str, default_name: str) -> None:
+        self.hass = hass
         self._store = store
         self._item_id = item_id
         self._default_name = default_name
@@ -212,18 +242,36 @@ class MaintenanceSensor(SensorEntity):
     @property
     def extra_state_attributes(self):
         item = self._store.items.get(self._item_id)
-        events = item.events if item else []
+        if not item:
+            return {"item_id": self._item_id, "registered": False, "history": []}
+        status = _item_status(self.hass, item)
         return {
-            "item_id": self._item_id,
-            "registered": bool(events),
+            "item_id": item.item_id,
+            "registered": bool(item.events),
+            "category": item.category,
+            "location": item.location,
+            "manufacturer": item.manufacturer,
+            "model": item.model,
+            "serial_number": item.serial_number,
+            "installed_at": item.installed_at,
+            "interval_type": item.interval_type,
+            "interval_value": item.interval_value,
+            "meter_entity": item.meter_entity,
+            "manual_url": item.manual_url,
+            "receipt_url": item.receipt_url,
+            "image_url": item.image_url,
+            **status,
+            "total_cost": round(sum(event.cost or 0 for event in item.events), 2),
             "history": [
                 {
+                    "event_id": event.event_id,
                     "performed_at": event.performed_at,
                     "meter_value": event.meter_value,
                     "meter_entity": event.meter_entity,
                     "meter_unit": event.meter_unit,
                     "note": event.note,
+                    "cost": event.cost,
                 }
-                for event in events
+                for event in item.events
             ],
         }
