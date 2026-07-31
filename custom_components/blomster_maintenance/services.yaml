@@ -39,3 +39,18 @@ record_maintenance:
       selector:
         text:
           multiline: true
+
+delete_maintenance:
+  name: Ta bort underhållspost
+  description: Tar bort exakt en registrerad underhållshändelse med hjälp av objektets ID och händelsens unika ID.
+  fields:
+    item_id:
+      name: Underhålls-ID
+      required: true
+      selector:
+        text:
+    event_id:
+      name: Händelse-ID
+      required: true
+      selector:
+        text:
