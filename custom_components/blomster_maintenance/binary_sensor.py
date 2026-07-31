@@ -10,8 +10,11 @@ from .const import (
     CONF_BLADE_INTERVAL_HOURS,
     CONF_BLADE_USAGE_ENTITY,
     CONF_BLADE_WARNING_ENTITY,
+    DOMAIN,
 )
+from .reminders import async_start_reminders
 from .sensor import _state_hours
+from .storage import MaintenanceStore
 
 _INACTIVE_WARNING_STATES = {"", "0", "false", "none", "off", "ok", "unknown", "unavailable"}
 
@@ -22,6 +25,9 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     async_add_entities([BladeReplacementDueBinarySensor(hass, entry)])
+    store: MaintenanceStore = hass.data[DOMAIN][entry.entry_id]
+    remove_reminders = await async_start_reminders(hass, store)
+    entry.async_on_unload(remove_reminders)
 
 
 class BladeReplacementDueBinarySensor(BinarySensorEntity):
@@ -40,10 +46,7 @@ class BladeReplacementDueBinarySensor(BinarySensorEntity):
     def is_on(self) -> bool:
         used = _state_hours(self.hass, self._usage_entity)
         warning = self.hass.states.get(self._warning_entity)
-        warning_active = bool(
-            warning
-            and warning.state.strip().casefold() not in _INACTIVE_WARNING_STATES
-        )
+        warning_active = bool(warning and warning.state.strip().casefold() not in _INACTIVE_WARNING_STATES)
         return warning_active or (used is not None and used >= self._interval)
 
     @property
