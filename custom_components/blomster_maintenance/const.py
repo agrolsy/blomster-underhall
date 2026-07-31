@@ -11,9 +11,11 @@ DEFAULT_BLADE_INTERVAL_HOURS = 150.0
 
 SERVICE_SET_WATER_BASELINE = "set_water_baseline"
 SERVICE_RECORD_MAINTENANCE = "record_maintenance"
+SERVICE_DELETE_MAINTENANCE = "delete_maintenance"
 
 ATTR_BASELINE_LITERS = "baseline_liters"
 ATTR_ITEM_ID = "item_id"
+ATTR_EVENT_ID = "event_id"
 ATTR_NAME = "name"
 ATTR_NOTE = "note"
 ATTR_METER_ENTITY = "meter_entity"
