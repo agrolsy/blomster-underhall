@@ -19,12 +19,25 @@ class MaintenanceEvent:
     meter_entity: str | None = None
     meter_unit: str | None = None
     note: str | None = None
+    cost: float | None = None
 
 
 @dataclass(slots=True)
 class MaintenanceItem:
     item_id: str
     name: str
+    category: str | None = None
+    location: str | None = None
+    manufacturer: str | None = None
+    model: str | None = None
+    serial_number: str | None = None
+    installed_at: str | None = None
+    interval_type: str | None = None
+    interval_value: float | None = None
+    meter_entity: str | None = None
+    manual_url: str | None = None
+    receipt_url: str | None = None
+    image_url: str | None = None
     events: list[MaintenanceEvent] = field(default_factory=list)
 
 
@@ -48,19 +61,30 @@ class MaintenanceStore:
         self.water = WaterAccumulator(**raw.get("water", {}))
         migrated = False
         items: dict[str, MaintenanceItem] = {}
-        for item in raw.get("items", []):
+        for raw_item in raw.get("items", []):
+            item_data = dict(raw_item)
+            raw_events = item_data.pop("events", [])
             events: list[MaintenanceEvent] = []
-            for event in item.get("events", []):
-                event_data = dict(event)
+            for raw_event in raw_events:
+                event_data = dict(raw_event)
                 if not event_data.get("event_id"):
                     event_data["event_id"] = uuid4().hex
                     migrated = True
+                event_data.setdefault("cost", None)
                 events.append(MaintenanceEvent(**event_data))
-            items[item["item_id"]] = MaintenanceItem(
-                item_id=item["item_id"],
-                name=item["name"],
-                events=events,
-            )
+            item_data.setdefault("category", None)
+            item_data.setdefault("location", None)
+            item_data.setdefault("manufacturer", None)
+            item_data.setdefault("model", None)
+            item_data.setdefault("serial_number", None)
+            item_data.setdefault("installed_at", None)
+            item_data.setdefault("interval_type", None)
+            item_data.setdefault("interval_value", None)
+            item_data.setdefault("meter_entity", None)
+            item_data.setdefault("manual_url", None)
+            item_data.setdefault("receipt_url", None)
+            item_data.setdefault("image_url", None)
+            items[item_data["item_id"]] = MaintenanceItem(**item_data, events=events)
         self.items = items
         if migrated:
             await self.async_save()
@@ -98,6 +122,16 @@ class MaintenanceStore:
         await self.async_save()
         return True
 
+    async def async_configure_item(self, item_id: str, name: str, **values: Any) -> MaintenanceItem:
+        item = self.items.get(item_id) or MaintenanceItem(item_id=item_id, name=name)
+        item.name = name
+        for key, value in values.items():
+            if hasattr(item, key):
+                setattr(item, key, value)
+        self.items[item_id] = item
+        await self.async_save()
+        return item
+
     async def async_record(
         self,
         item_id: str,
@@ -106,6 +140,7 @@ class MaintenanceStore:
         meter_entity: str | None,
         meter_unit: str | None,
         note: str | None,
+        cost: float | None = None,
     ) -> MaintenanceEvent:
         item = self.items.get(item_id) or MaintenanceItem(item_id=item_id, name=name)
         item.name = name
@@ -116,6 +151,7 @@ class MaintenanceStore:
             meter_entity=meter_entity,
             meter_unit=meter_unit,
             note=note,
+            cost=cost,
         )
         item.events.append(event)
         self.items[item_id] = item
