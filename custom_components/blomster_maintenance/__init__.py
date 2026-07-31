@@ -13,6 +13,7 @@ from homeassistant.helpers import config_validation as cv
 
 from .const import (
     ATTR_BASELINE_LITERS,
+    ATTR_EVENT_ID,
     ATTR_ITEM_ID,
     ATTR_METER_ENTITY,
     ATTR_NAME,
@@ -22,6 +23,7 @@ from .const import (
     DOMAIN,
     EVENT_MAINTENANCE_UPDATED,
     EVENT_WATER_UPDATED,
+    SERVICE_DELETE_MAINTENANCE,
     SERVICE_RECORD_MAINTENANCE,
     SERVICE_SET_WATER_BASELINE,
 )
@@ -42,6 +44,12 @@ RECORD_SCHEMA = vol.Schema(
         vol.Required(ATTR_NAME): cv.string,
         vol.Optional(ATTR_METER_ENTITY): cv.entity_id,
         vol.Optional(ATTR_NOTE): cv.string,
+    }
+)
+DELETE_SCHEMA = vol.Schema(
+    {
+        vol.Required(ATTR_ITEM_ID): cv.string,
+        vol.Required(ATTR_EVENT_ID): cv.string,
     }
 )
 
@@ -78,7 +86,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await store.async_set_baseline(call.data[ATTR_BASELINE_LITERS], current_value)
         hass.bus.async_fire(EVENT_WATER_UPDATED)
 
-    async def record_maintenance(call: ServiceCall) -> None:
+    async def record_maintenance(call: ServiceCall) -> dict[str, str]:
         meter_entity = call.data.get(ATTR_METER_ENTITY)
         meter_value = None
         meter_unit = None
@@ -92,21 +100,44 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 raise HomeAssistantError("Den valda mätarentitetens värde är inte numeriskt") from err
             meter_unit = state.attributes.get("unit_of_measurement")
 
-        item = await store.async_record(
-            item_id=call.data[ATTR_ITEM_ID],
+        item_id = call.data[ATTR_ITEM_ID]
+        event = await store.async_record(
+            item_id=item_id,
             name=call.data[ATTR_NAME],
             meter_value=meter_value,
             meter_entity=meter_entity,
             meter_unit=meter_unit,
             note=call.data.get(ATTR_NOTE),
         )
-        hass.bus.async_fire(EVENT_MAINTENANCE_UPDATED, {"item_id": item.item_id})
+        hass.bus.async_fire(
+            EVENT_MAINTENANCE_UPDATED,
+            {"item_id": item_id, "event_id": event.event_id, "action": "created"},
+        )
+        return {"item_id": item_id, "event_id": event.event_id}
+
+    async def delete_maintenance(call: ServiceCall) -> None:
+        item_id = call.data[ATTR_ITEM_ID]
+        event_id = call.data[ATTR_EVENT_ID]
+        deleted = await store.async_delete_event(item_id, event_id)
+        if not deleted:
+            raise HomeAssistantError("Underhållsposten finns inte längre")
+        hass.bus.async_fire(
+            EVENT_MAINTENANCE_UPDATED,
+            {"item_id": item_id, "event_id": event_id, "action": "deleted"},
+        )
 
     hass.services.async_register(
         DOMAIN, SERVICE_SET_WATER_BASELINE, set_water_baseline, schema=BASELINE_SCHEMA
     )
     hass.services.async_register(
-        DOMAIN, SERVICE_RECORD_MAINTENANCE, record_maintenance, schema=RECORD_SCHEMA
+        DOMAIN,
+        SERVICE_RECORD_MAINTENANCE,
+        record_maintenance,
+        schema=RECORD_SCHEMA,
+        supports_response=True,
+    )
+    hass.services.async_register(
+        DOMAIN, SERVICE_DELETE_MAINTENANCE, delete_maintenance, schema=DELETE_SCHEMA
     )
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
@@ -120,4 +151,5 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if not hass.data[DOMAIN]:
             hass.services.async_remove(DOMAIN, SERVICE_SET_WATER_BASELINE)
             hass.services.async_remove(DOMAIN, SERVICE_RECORD_MAINTENANCE)
+            hass.services.async_remove(DOMAIN, SERVICE_DELETE_MAINTENANCE)
     return unloaded
