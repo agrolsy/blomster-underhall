@@ -40,6 +40,7 @@ from .const import (
     SERVICE_RECORD_MAINTENANCE,
     SERVICE_SET_WATER_BASELINE,
 )
+from .frontend import async_setup_frontend
 from .storage import MaintenanceStore
 from .water import async_start_water_tracking
 
@@ -162,6 +163,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.services.async_register(DOMAIN, SERVICE_DELETE_MAINTENANCE, delete_maintenance, schema=DELETE_SCHEMA)
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    await async_setup_frontend(hass)
     return True
 
 
