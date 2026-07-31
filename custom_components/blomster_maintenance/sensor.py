@@ -55,8 +55,6 @@ def _live_accumulated_liters(hass: HomeAssistant, store: MaintenanceStore) -> fl
     except (TypeError, ValueError):
         return accumulated
 
-    # The source is a daily counter. If it resets at midnight, today's current
-    # value is the delta. Otherwise only add the increase since last processing.
     pending_delta = current - previous if current >= previous else current
     return accumulated + max(0.0, pending_delta)
 
@@ -218,6 +216,7 @@ class MaintenanceSensor(SensorEntity):
             "registered": bool(events),
             "history": [
                 {
+                    "event_id": event.event_id,
                     "performed_at": event.performed_at,
                     "meter_value": event.meter_value,
                     "meter_entity": event.meter_entity,
