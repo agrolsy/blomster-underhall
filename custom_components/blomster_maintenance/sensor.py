@@ -17,6 +17,11 @@ from .const import (
 )
 from .storage import MaintenanceStore
 
+_PREDEFINED_ITEMS = {
+    "luba_blades": "Luba-knivar",
+    "water_filter": "Vattenfilter",
+}
+
 
 def _state_hours(hass: HomeAssistant, entity_id: str) -> float | None:
     state = hass.states.get(entity_id)
@@ -38,27 +43,32 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     store: MaintenanceStore = hass.data[DOMAIN][entry.entry_id]
     water = WaterTotalSensor(store)
     blade = BladeRemainingSensor(hass, entry)
-    entities: dict[str, MaintenanceSensor] = {}
-    async_add_entities([water, blade])
+    water_since_filter = WaterSinceFilterSensor(store)
+    entities: dict[str, MaintenanceSensor] = {
+        item_id: MaintenanceSensor(store, item_id, name)
+        for item_id, name in _PREDEFINED_ITEMS.items()
+    }
+    async_add_entities([water, blade, water_since_filter, *entities.values()])
 
     @callback
     def sync_water(_event=None) -> None:
         water.async_write_ha_state()
+        water_since_filter.async_write_ha_state()
 
     @callback
     def sync_items(_event=None) -> None:
         new_entities = []
-        for item_id in store.items:
+        for item_id, item in store.items.items():
             if item_id not in entities:
-                entity = MaintenanceSensor(store, item_id)
+                entity = MaintenanceSensor(store, item_id, item.name)
                 entities[item_id] = entity
                 new_entities.append(entity)
         if new_entities:
             async_add_entities(new_entities)
         for entity in entities.values():
             entity.async_write_ha_state()
+        water_since_filter.async_write_ha_state()
 
-    sync_items()
     entry.async_on_unload(hass.bus.async_listen(EVENT_WATER_UPDATED, sync_water))
     entry.async_on_unload(hass.bus.async_listen(EVENT_MAINTENANCE_UPDATED, sync_items))
 
@@ -88,6 +98,39 @@ class WaterTotalSensor(SensorEntity):
             "last_source_value": water.last_source_value,
             "last_updated": water.last_updated,
             "method": "manual_baseline_plus_daily_delta",
+        }
+
+
+class WaterSinceFilterSensor(SensorEntity):
+    _attr_name = "Vatten sedan filterbyte"
+    _attr_unique_id = f"{DOMAIN}_water_since_filter"
+    _attr_icon = "mdi:water-sync"
+    _attr_native_unit_of_measurement = UnitOfVolume.LITERS
+    _attr_device_class = SensorDeviceClass.WATER
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_suggested_display_precision = 1
+
+    def __init__(self, store: MaintenanceStore) -> None:
+        self._store = store
+
+    @property
+    def native_value(self) -> float | None:
+        item = self._store.items.get("water_filter")
+        if not item or not item.events:
+            return None
+        baseline = item.events[-1].meter_value
+        if baseline is None:
+            return None
+        return round(max(0.0, self._store.water.accumulated_liters - baseline), 3)
+
+    @property
+    def extra_state_attributes(self):
+        item = self._store.items.get("water_filter")
+        last_event = item.events[-1] if item and item.events else None
+        return {
+            "last_filter_change": last_event.performed_at if last_event else None,
+            "baseline_liters": last_event.meter_value if last_event else None,
+            "status": "Aldrig registrerat" if last_event is None else "Registrerat",
         }
 
 
@@ -123,31 +166,37 @@ class BladeRemainingSensor(SensorEntity):
 class MaintenanceSensor(SensorEntity):
     _attr_icon = "mdi:tools"
 
-    def __init__(self, store: MaintenanceStore, item_id: str) -> None:
+    def __init__(self, store: MaintenanceStore, item_id: str, default_name: str) -> None:
         self._store = store
         self._item_id = item_id
+        self._default_name = default_name
         self._attr_unique_id = f"{DOMAIN}_{item_id}"
 
     @property
     def name(self) -> str:
-        return self._store.items[self._item_id].name
+        item = self._store.items.get(self._item_id)
+        return item.name if item else self._default_name
 
     @property
     def native_value(self):
-        events = self._store.items[self._item_id].events
-        return events[-1].performed_at if events else "Ej registrerat"
+        item = self._store.items.get(self._item_id)
+        return item.events[-1].performed_at if item and item.events else "Aldrig registrerat"
 
     @property
     def extra_state_attributes(self):
-        item = self._store.items[self._item_id]
+        item = self._store.items.get(self._item_id)
+        events = item.events if item else []
         return {
-            "item_id": item.item_id,
+            "item_id": self._item_id,
+            "registered": bool(events),
             "history": [
                 {
                     "performed_at": event.performed_at,
                     "meter_value": event.meter_value,
+                    "meter_entity": event.meter_entity,
+                    "meter_unit": event.meter_unit,
                     "note": event.note,
                 }
-                for event in item.events
+                for event in events
             ],
         }
