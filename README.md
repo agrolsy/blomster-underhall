@@ -2,12 +2,13 @@
 
 En egen Home Assistant-integration för husets underhåll, servicehistorik och mätarbaserade påminnelser.
 
-Första testversionen hanterar:
+Version 0.3.0 hanterar bland annat:
 
 - egen beständig total för vattenförbrukning
 - vattenfilterbyten med sparad mätarställning
 - Mammotion Luba-blad med 150 timmars bytesintervall
 - både bladens användningstid och Mammotions egen slitagevarning
+- underhållshistorik med möjlighet att ta bort och ångra felaktiga poster
 
 ## Vattenförbrukning
 
@@ -53,17 +54,33 @@ Varningen blir aktiv när antingen användningstiden når 150 timmar eller Mammo
 
 ## Underhållshistorik
 
-Tjänsten `blomster_maintenance.record_maintenance` sparar datum, anteckning och aktuell ackumulerad vattenförbrukning. Datan lagras lokalt med Home Assistants Store-API under `.storage` och följer med vanliga Home Assistant-backuper.
+Tjänsten `blomster_maintenance.record_maintenance` sparar datum, anteckning och vald mätarställning. Varje historikpost får ett stabilt unikt ID. Datan lagras lokalt med Home Assistants Store-API under `.storage` och följer med vanliga Home Assistant-backuper.
 
 Exempel för vattenfilter:
 
 ```yaml
 action: blomster_maintenance.record_maintenance
 data:
-  item_id: vattenfilter
+  item_id: water_filter
   name: Vattenfilter
-  note: Nytt filter monterat 30 juli 2026. Intervall ännu okänt.
+  meter_entity: sensor.ackumulerad_vattenforbrukning
+  note: Nytt filter monterat.
 ```
+
+Det anpassade Lovelace-kortet visar en **Ta bort**-knapp på varje rad. Borttagningen kräver bekräftelse, sker i integrationens backend och uppdaterar historik samt berörda sensorer direkt.
+
+Samma funktion kan användas manuellt:
+
+```yaml
+action: blomster_maintenance.delete_maintenance
+data:
+  item_id: water_filter
+  event_id: ID_FRÅN_HISTORIKEN
+```
+
+Tjänsten för registrering returnerar `item_id` och `event_id` när den anropas med tjänstesvar. Det gör att en automation eller annan klient kan erbjuda **Ångra** och ta bort exakt den nyss skapade posten.
+
+Äldre poster utan ID migreras automatiskt nästa gång integrationen laddas.
 
 ## Installation via HACS
 
@@ -116,7 +133,3 @@ till:
 ```
 
 Starta sedan om Home Assistant och lägg till integrationen från gränssnittet.
-
-## Status
-
-Detta är version `0.1.0` och ska testas i den aktuella Home Assistant-installationen innan den betraktas som stabil. Nästa steg är dashboardkort, kvitteringsknappar och återkommande notifieringar.
