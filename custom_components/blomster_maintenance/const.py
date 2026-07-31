@@ -16,6 +16,7 @@ ATTR_BASELINE_LITERS = "baseline_liters"
 ATTR_ITEM_ID = "item_id"
 ATTR_NAME = "name"
 ATTR_NOTE = "note"
+ATTR_METER_ENTITY = "meter_entity"
 
 WATER_SENSOR_UNIQUE_ID = f"{DOMAIN}_water_total"
 BLADE_REMAINING_SENSOR_UNIQUE_ID = f"{DOMAIN}_blade_remaining"
