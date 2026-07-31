@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import voluptuous as vol
 
+from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, ServiceCall
@@ -26,6 +29,9 @@ from .storage import MaintenanceStore
 from .water import async_start_water_tracking
 
 PLATFORMS = [Platform.SENSOR, Platform.BINARY_SENSOR]
+CARD_URL = "/blomster_maintenance/blomster-maintenance-card.js"
+CARD_PATH = Path(__file__).parent / "static" / "blomster-maintenance-card.js"
+CARD_REGISTERED = f"{DOMAIN}_card_registered"
 
 BASELINE_SCHEMA = vol.Schema(
     {vol.Required(ATTR_BASELINE_LITERS): vol.All(vol.Coerce(float), vol.Range(min=0))}
@@ -41,6 +47,12 @@ RECORD_SCHEMA = vol.Schema(
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    if not hass.data.get(CARD_REGISTERED):
+        await hass.http.async_register_static_paths(
+            [StaticPathConfig(CARD_URL, str(CARD_PATH), False)]
+        )
+        hass.data[CARD_REGISTERED] = True
+
     store = MaintenanceStore(hass)
     await store.async_load()
     await store.async_configure_water(
