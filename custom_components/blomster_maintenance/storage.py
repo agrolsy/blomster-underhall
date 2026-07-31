@@ -14,6 +14,8 @@ from .const import STORAGE_KEY, STORAGE_VERSION
 class MaintenanceEvent:
     performed_at: str
     meter_value: float | None = None
+    meter_entity: str | None = None
+    meter_unit: str | None = None
     note: str | None = None
 
 
@@ -84,13 +86,23 @@ class MaintenanceStore:
         await self.async_save()
         return True
 
-    async def async_record(self, item_id: str, name: str, meter_value: float | None, note: str | None) -> MaintenanceItem:
+    async def async_record(
+        self,
+        item_id: str,
+        name: str,
+        meter_value: float | None,
+        meter_entity: str | None,
+        meter_unit: str | None,
+        note: str | None,
+    ) -> MaintenanceItem:
         item = self.items.get(item_id) or MaintenanceItem(item_id=item_id, name=name)
         item.name = name
         item.events.append(
             MaintenanceEvent(
                 performed_at=datetime.now().astimezone().isoformat(),
                 meter_value=meter_value,
+                meter_entity=meter_entity,
+                meter_unit=meter_unit,
                 note=note,
             )
         )
