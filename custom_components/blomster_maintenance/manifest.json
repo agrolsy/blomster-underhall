@@ -6,6 +6,6 @@
   "issue_tracker": "https://github.com/agrolsy/blomster-underhall/issues",
   "codeowners": ["@agrolsy"],
   "config_flow": true,
-  "dependencies": ["frontend", "lovelace", "recorder"],
+  "dependencies": ["frontend", "http", "lovelace", "recorder"],
   "iot_class": "local_push"
 }
