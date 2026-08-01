@@ -31,6 +31,9 @@ from .const import (
     ATTR_RECEIPT_URL,
     ATTR_SERIAL_NUMBER,
     ATTR_WARNING_ENTITIES,
+    CONF_BLADE_INTERVAL_HOURS,
+    CONF_BLADE_USAGE_ENTITY,
+    CONF_BLADE_WARNING_ENTITY,
     CONF_WATER_INSTALLATION_DATE,
     CONF_WATER_SOURCE_ENTITY,
     DOMAIN,
@@ -95,6 +98,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         installation_date=installation_value.isoformat()
         if hasattr(installation_value, "isoformat")
         else str(installation_value),
+    )
+    await store.async_configure_item(
+        item_id="luba_blades",
+        name="Luba-knivar",
+        interval_type="hours",
+        interval_value=float(entry.options.get(CONF_BLADE_INTERVAL_HOURS, entry.data[CONF_BLADE_INTERVAL_HOURS])),
+        meter_entity=entry.options.get(CONF_BLADE_USAGE_ENTITY, entry.data[CONF_BLADE_USAGE_ENTITY]),
+        warning_entities=[entry.options.get(CONF_BLADE_WARNING_ENTITY, entry.data[CONF_BLADE_WARNING_ENTITY])],
     )
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = store
 

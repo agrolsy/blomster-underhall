@@ -171,7 +171,7 @@ class WaterSinceFilterSensor(SensorEntity):
     _attr_icon = "mdi:water-sync"
     _attr_native_unit_of_measurement = UnitOfVolume.LITERS
     _attr_device_class = SensorDeviceClass.WATER
-    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_state_class = SensorStateClass.TOTAL
 
     def __init__(self, hass: HomeAssistant, store: MaintenanceStore) -> None:
         self.hass = hass
