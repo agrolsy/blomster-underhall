@@ -71,6 +71,12 @@ configure_item:
       name: Bild
       description: Lokal eller extern URL.
       selector: {text: {}}
+    warning_entities:
+      name: Externa varningsentiteter
+      description: En eller flera entiteter som också ska aktivera objektets problemvarning.
+      selector:
+        entity:
+          multiple: true
 
 record_maintenance:
   name: Registrera underhåll
@@ -101,6 +107,19 @@ record_maintenance:
 delete_maintenance:
   name: Ta bort underhållspost
   description: Tar bort exakt en händelse med objektets ID och händelsens unika ID.
+  fields:
+    item_id:
+      name: Underhålls-ID
+      required: true
+      selector: {text: {}}
+
+import_water_history:
+  name: Importera vattenhistorik
+  description: Bygger vattenbaslinjen från Recorder endast om historiken täcker hela perioden från installationsdatum till nutid.
+
+acknowledge_maintenance:
+  name: Kvittera underhållsvarning
+  description: Kvitterar objektets nuvarande varningsorsaker. En ny eller förändrad orsak aktiverar varningen igen.
   fields:
     item_id:
       name: Underhålls-ID

@@ -32,6 +32,15 @@ Varje objekts sensor visar metadata, historik, kostnad och beräknad status. `se
 
 Integrationen kontrollerar serviceboken varje timme och skapar stabila Home Assistant-notiser för objekt som aldrig har registrerats, snart behöver service eller är försenade. Samma notis-ID återanvänds så att dubletter inte skapas.
 
+Varje objekt har också `binary_sensor.<objekt>_problem` och
+`button.kvittera_<objekt>`. Flera `warning_entities` kan kombineras med det
+vanliga intervallet. Kvitteringen gäller aktuell orsakssignatur och återställs
+automatiskt när orsakerna förändras.
+
+Vid varje återkommande aktiv påminnelse skickas eventet
+`blomster_maintenance_reminder`. En automation kan använda eventets `item_id`,
+`name`, `status` och `signature` för att skicka pushnotiser till valfria enheter.
+
 ## Dokument
 
 Manualer, kvitton och bilder lagras som lokala eller externa URL:er. Själva filerna kan därför ligga exempelvis under Home Assistants `/local/`-katalog eller i annan vald lagring.

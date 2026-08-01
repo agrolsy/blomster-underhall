@@ -5,6 +5,7 @@ from typing import Any
 import voluptuous as vol
 
 from homeassistant import config_entries
+from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import selector
 
@@ -23,6 +24,11 @@ class BlomsterMaintenanceConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Blomster Underhåll."""
 
     VERSION = 1
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry: config_entries.ConfigEntry):
+        return BlomsterMaintenanceOptionsFlow()
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -65,3 +71,28 @@ class BlomsterMaintenanceConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             }
         )
         return self.async_show_form(step_id="user", data_schema=data_schema)
+
+
+class BlomsterMaintenanceOptionsFlow(config_entries.OptionsFlow):
+    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+        if user_input is not None:
+            return self.async_create_entry(data=user_input)
+        current = {**self.config_entry.data, **self.config_entry.options}
+        schema = vol.Schema(
+            {
+                vol.Required(CONF_WATER_SOURCE_ENTITY, default=current[CONF_WATER_SOURCE_ENTITY]): selector.EntitySelector(
+                    selector.EntitySelectorConfig(domain="sensor")
+                ),
+                vol.Required(CONF_WATER_INSTALLATION_DATE, default=current[CONF_WATER_INSTALLATION_DATE]): selector.DateSelector(),
+                vol.Required(CONF_BLADE_USAGE_ENTITY, default=current[CONF_BLADE_USAGE_ENTITY]): selector.EntitySelector(
+                    selector.EntitySelectorConfig(domain="sensor")
+                ),
+                vol.Required(CONF_BLADE_WARNING_ENTITY, default=current[CONF_BLADE_WARNING_ENTITY]): selector.EntitySelector(
+                    selector.EntitySelectorConfig(domain="sensor")
+                ),
+                vol.Required(CONF_BLADE_INTERVAL_HOURS, default=current[CONF_BLADE_INTERVAL_HOURS]): selector.NumberSelector(
+                    selector.NumberSelectorConfig(min=1, step=1, mode=selector.NumberSelectorMode.BOX, unit_of_measurement="h")
+                ),
+            }
+        )
+        return self.async_show_form(step_id="init", data_schema=schema)

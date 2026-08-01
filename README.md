@@ -2,13 +2,16 @@
 
 En egen Home Assistant-integration för husets underhåll, servicehistorik och mätarbaserade påminnelser.
 
-Version 0.3.0 hanterar bland annat:
+Version 0.6.0 hanterar bland annat:
 
 - egen beständig total för vattenförbrukning
 - vattenfilterbyten med sparad mätarställning
 - Mammotion Luba-blad med 150 timmars bytesintervall
 - både bladens användningstid och Mammotions egen slitagevarning
 - underhållshistorik med möjlighet att ta bort och ångra felaktiga poster
+- generella problem-entiteter och kvitteringsknappar per serviceobjekt
+- flera samtidiga externa varningsvillkor per objekt
+- beständiga notiser och återkommande `blomster_maintenance_reminder`-event
 
 ## Vattenförbrukning
 
@@ -27,6 +30,11 @@ Mätaren installerades den 6 juli 2026, men Home Assistant saknar hela historike
 ```
 
 Efter installation ska tjänsten `blomster_maintenance.set_water_baseline` köras en gång med `14839`. Tjänsten sparar samtidigt Grohes aktuella dagsvärde så att dagens förbrukning inte dubbelräknas.
+
+Om Recorder har komplett historik från installationsdatum till nutid försöker
+integrationen i stället bygga baslinjen automatiskt. Luckig eller gammal
+historik avvisas. Fram tills en säker Recorder-import eller manuell baslinje
+finns är totalsensorn otillgänglig i stället för att visa ett falskt `0 L`.
 
 Integrationen skapar:
 
@@ -51,6 +59,18 @@ binary_sensor.luba_blad_behover_bytas
 ```
 
 Varningen blir aktiv när antingen användningstiden når 150 timmar eller Mammotions egen slitagevarning är aktiv.
+
+## Generella varningar och kvittering
+
+`configure_item` accepterar `warning_entities`, en lista med externa villkor
+som kombineras med objektets intervall. Varje objekt får en problemsensor och
+en kvitteringsknapp. En kvittering gäller bara exakt den aktuella kombinationen
+av orsaker; när status eller en extern varning förändras aktiveras problemet på
+nytt. Aktiva problem skapar en beständig notis och ett återkommande event som
+kan användas som trigger för valfri mobil push-automation.
+
+Integrationsinställningarna kan ändras via Home Assistants Options-dialog utan
+att integrationen behöver tas bort och läggas till igen.
 
 ## Underhållshistorik
 

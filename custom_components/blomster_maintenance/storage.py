@@ -38,6 +38,8 @@ class MaintenanceItem:
     manual_url: str | None = None
     receipt_url: str | None = None
     image_url: str | None = None
+    warning_entities: list[str] = field(default_factory=list)
+    acknowledged_signature: str | None = None
     events: list[MaintenanceEvent] = field(default_factory=list)
 
 
@@ -48,6 +50,8 @@ class WaterAccumulator:
     accumulated_liters: float = 0.0
     last_source_value: float | None = None
     last_updated: str | None = None
+    baseline_established: bool = False
+    imported_from_recorder: bool = False
 
 
 class MaintenanceStore:
@@ -58,7 +62,10 @@ class MaintenanceStore:
 
     async def async_load(self) -> None:
         raw = await self._store.async_load() or {}
-        self.water = WaterAccumulator(**raw.get("water", {}))
+        water_data = dict(raw.get("water", {}))
+        water_data.setdefault("baseline_established", bool(water_data.get("accumulated_liters", 0)))
+        water_data.setdefault("imported_from_recorder", False)
+        self.water = WaterAccumulator(**water_data)
         migrated = False
         items: dict[str, MaintenanceItem] = {}
         for raw_item in raw.get("items", []):
@@ -84,6 +91,8 @@ class MaintenanceStore:
             item_data.setdefault("manual_url", None)
             item_data.setdefault("receipt_url", None)
             item_data.setdefault("image_url", None)
+            item_data.setdefault("warning_entities", [])
+            item_data.setdefault("acknowledged_signature", None)
             items[item_data["item_id"]] = MaintenanceItem(**item_data, events=events)
         self.items = items
         if migrated:
@@ -106,11 +115,23 @@ class MaintenanceStore:
         self.water.accumulated_liters = baseline_liters
         self.water.last_source_value = current_source_value
         self.water.last_updated = datetime.now().astimezone().isoformat()
+        self.water.baseline_established = True
+        self.water.imported_from_recorder = False
+        await self.async_save()
+
+    async def async_set_imported_total(self, total: float, current_source_value: float) -> None:
+        self.water.accumulated_liters = total
+        self.water.last_source_value = current_source_value
+        self.water.last_updated = datetime.now().astimezone().isoformat()
+        self.water.baseline_established = True
+        self.water.imported_from_recorder = True
         await self.async_save()
 
     async def async_add_source_value(self, value: float) -> bool:
         previous = self.water.last_source_value
         if previous is None:
+            self.water.last_source_value = value
+        elif not self.water.baseline_established:
             self.water.last_source_value = value
         else:
             delta = value - previous if value >= previous else value
@@ -119,6 +140,14 @@ class MaintenanceStore:
             self.water.accumulated_liters += delta
             self.water.last_source_value = value
         self.water.last_updated = datetime.now().astimezone().isoformat()
+        await self.async_save()
+        return True
+
+    async def async_acknowledge_item(self, item_id: str, signature: str) -> bool:
+        item = self.items.get(item_id)
+        if item is None:
+            return False
+        item.acknowledged_signature = signature
         await self.async_save()
         return True
 
