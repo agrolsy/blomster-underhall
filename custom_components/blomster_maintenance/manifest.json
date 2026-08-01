@@ -3,9 +3,9 @@
   "name": "Blomster Underhåll",
   "codeowners": ["@agrolsy"],
   "config_flow": true,
-  "dependencies": ["frontend", "http", "lovelace"],
+  "dependencies": ["frontend", "http", "lovelace", "recorder"],
   "documentation": "https://github.com/agrolsy/blomster-underhall",
   "iot_class": "local_push",
   "issue_tracker": "https://github.com/agrolsy/blomster-underhall/issues",
-  "version": "0.5.0"
+  "version": "0.6.0"
 }

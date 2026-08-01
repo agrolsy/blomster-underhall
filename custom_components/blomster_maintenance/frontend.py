@@ -11,7 +11,7 @@ from homeassistant.exceptions import HomeAssistantError
 
 _LOGGER = logging.getLogger(__name__)
 
-CARD_URL = "/blomster_maintenance/blomster-maintenance-card.js?v=0.5.0"
+CARD_URL = "/blomster_maintenance/blomster-maintenance-card.js?v=0.6.0"
 CARD_URL_BASE = "/blomster_maintenance/blomster-maintenance-card.js"
 DASHBOARD_URL_PATH = "blomster-underhall"
 DASHBOARD_TITLE = "Blomster Underhåll"
@@ -50,6 +50,10 @@ DASHBOARD_CONFIG: dict[str, Any] = {
                                 "sensor.vatten_sedan_filterbyte",
                                 "sensor.luba_blad_aterstaende_tid",
                                 "binary_sensor.luba_blad_behover_bytas",
+                                "binary_sensor.vattenfilter_problem",
+                                "button.kvittera_vattenfilter",
+                                "binary_sensor.luba_knivar_problem",
+                                "button.kvittera_luba_knivar",
                             ],
                         },
                     ],

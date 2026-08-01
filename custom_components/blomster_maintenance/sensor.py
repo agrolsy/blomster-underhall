@@ -21,6 +21,7 @@ from .const import (
 from .storage import MaintenanceItem, MaintenanceStore
 
 _PREDEFINED_ITEMS = {"luba_blades": "Luba-knivar", "water_filter": "Vattenfilter"}
+_INACTIVE_WARNING_STATES = {"", "0", "false", "none", "off", "ok", "unknown", "unavailable"}
 
 
 def _numeric_state(hass: HomeAssistant, entity_id: str | None) -> float | None:
@@ -88,6 +89,17 @@ def _item_status(hass: HomeAssistant, item: MaintenanceItem) -> dict:
     return {"status": status, "remaining": round(remaining, 2) if remaining is not None else None, "next_due": next_due}
 
 
+def _item_problem_signature(hass: HomeAssistant, item: MaintenanceItem) -> str | None:
+    status = _item_status(hass, item)["status"]
+    reasons = [status] if status in {"never", "due_soon", "overdue"} else []
+    for entity_id in item.warning_entities:
+        state = hass.states.get(entity_id)
+        value = state.state.strip().casefold() if state else "unavailable"
+        if value not in _INACTIVE_WARNING_STATES:
+            reasons.append(f"{entity_id}={value}")
+    return "|".join(reasons) or None
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
     store: MaintenanceStore = hass.data[DOMAIN][entry.entry_id]
     water = WaterTotalSensor(hass, store)
@@ -138,12 +150,19 @@ class WaterTotalSensor(SensorEntity):
         self._store = store
 
     @property
-    def native_value(self) -> float:
+    def native_value(self) -> float | None:
+        if not self._store.water.baseline_established:
+            return None
         return round(_live_accumulated_liters(self.hass, self._store), 3)
 
     @property
     def extra_state_attributes(self):
-        return {"source_entity": self._store.water.source_entity, "installation_date": self._store.water.installation_date}
+        return {
+            "source_entity": self._store.water.source_entity,
+            "installation_date": self._store.water.installation_date,
+            "baseline_established": self._store.water.baseline_established,
+            "imported_from_recorder": self._store.water.imported_from_recorder,
+        }
 
 
 class WaterSinceFilterSensor(SensorEntity):
@@ -176,8 +195,8 @@ class BladeRemainingSensor(SensorEntity):
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         self.hass = hass
-        self._usage_entity = entry.data[CONF_BLADE_USAGE_ENTITY]
-        self._interval = float(entry.data[CONF_BLADE_INTERVAL_HOURS])
+        self._usage_entity = entry.options.get(CONF_BLADE_USAGE_ENTITY, entry.data[CONF_BLADE_USAGE_ENTITY])
+        self._interval = float(entry.options.get(CONF_BLADE_INTERVAL_HOURS, entry.data[CONF_BLADE_INTERVAL_HOURS]))
 
     @property
     def native_value(self) -> float | None:
@@ -196,7 +215,12 @@ class ServiceBookSensor(SensorEntity):
 
     @property
     def native_value(self) -> int:
-        return sum(1 for item in self._store.items.values() if _item_status(self.hass, item)["status"] == "overdue")
+        return sum(
+            1
+            for item in self._store.items.values()
+            if (signature := _item_problem_signature(self.hass, item))
+            and signature != item.acknowledged_signature
+        )
 
     @property
     def extra_state_attributes(self):
@@ -260,6 +284,9 @@ class MaintenanceSensor(SensorEntity):
             "manual_url": item.manual_url,
             "receipt_url": item.receipt_url,
             "image_url": item.image_url,
+            "warning_entities": item.warning_entities,
+            "problem": bool((signature := _item_problem_signature(self.hass, item)) and signature != item.acknowledged_signature),
+            "acknowledged": bool(signature and signature == item.acknowledged_signature),
             **status,
             "total_cost": round(sum(event.cost or 0 for event in item.events), 2),
             "history": [

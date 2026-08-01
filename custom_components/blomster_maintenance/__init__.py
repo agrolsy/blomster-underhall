@@ -30,21 +30,24 @@ from .const import (
     ATTR_NOTE,
     ATTR_RECEIPT_URL,
     ATTR_SERIAL_NUMBER,
+    ATTR_WARNING_ENTITIES,
     CONF_WATER_INSTALLATION_DATE,
     CONF_WATER_SOURCE_ENTITY,
     DOMAIN,
     EVENT_MAINTENANCE_UPDATED,
     EVENT_WATER_UPDATED,
     SERVICE_CONFIGURE_ITEM,
+    SERVICE_ACKNOWLEDGE_MAINTENANCE,
     SERVICE_DELETE_MAINTENANCE,
+    SERVICE_IMPORT_WATER_HISTORY,
     SERVICE_RECORD_MAINTENANCE,
     SERVICE_SET_WATER_BASELINE,
 )
 from .frontend import async_setup_frontend
 from .storage import MaintenanceStore
-from .water import async_start_water_tracking
+from .water import async_import_water_history, async_start_water_tracking
 
-PLATFORMS = [Platform.SENSOR, Platform.BINARY_SENSOR]
+PLATFORMS = [Platform.SENSOR, Platform.BINARY_SENSOR, Platform.BUTTON]
 CARD_URL = "/blomster_maintenance/blomster-maintenance-card.js"
 CARD_PATH = Path(__file__).parent / "static" / "blomster-maintenance-card.js"
 CARD_REGISTERED = f"{DOMAIN}_card_registered"
@@ -65,6 +68,7 @@ CONFIGURE_SCHEMA = vol.Schema({
     vol.Optional(ATTR_MANUAL_URL): cv.string,
     vol.Optional(ATTR_RECEIPT_URL): cv.string,
     vol.Optional(ATTR_IMAGE_URL): cv.string,
+    vol.Optional(ATTR_WARNING_ENTITIES): vol.All(cv.ensure_list, [cv.entity_id]),
 })
 RECORD_SCHEMA = vol.Schema({
     vol.Required(ATTR_ITEM_ID): cv.string,
@@ -74,6 +78,7 @@ RECORD_SCHEMA = vol.Schema({
     vol.Optional(ATTR_COST): vol.All(vol.Coerce(float), vol.Range(min=0)),
 })
 DELETE_SCHEMA = vol.Schema({vol.Required(ATTR_ITEM_ID): cv.string, vol.Required(ATTR_EVENT_ID): cv.string})
+ACKNOWLEDGE_SCHEMA = vol.Schema({vol.Required(ATTR_ITEM_ID): cv.string})
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -83,13 +88,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     store = MaintenanceStore(hass)
     await store.async_load()
+    water_source = entry.options.get(CONF_WATER_SOURCE_ENTITY, entry.data[CONF_WATER_SOURCE_ENTITY])
+    installation_value = entry.options.get(CONF_WATER_INSTALLATION_DATE, entry.data[CONF_WATER_INSTALLATION_DATE])
     await store.async_configure_water(
-        source_entity=entry.data[CONF_WATER_SOURCE_ENTITY],
-        installation_date=entry.data[CONF_WATER_INSTALLATION_DATE].isoformat()
-        if hasattr(entry.data[CONF_WATER_INSTALLATION_DATE], "isoformat")
-        else str(entry.data[CONF_WATER_INSTALLATION_DATE]),
+        source_entity=water_source,
+        installation_date=installation_value.isoformat()
+        if hasattr(installation_value, "isoformat")
+        else str(installation_value),
     )
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = store
+
+    if not store.water.baseline_established:
+        await async_import_water_history(hass, store)
 
     remove_listener = await async_start_water_tracking(hass, store)
     if remove_listener:
@@ -151,6 +161,23 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             raise HomeAssistantError("Underhållsposten finns inte längre")
         hass.bus.async_fire(EVENT_MAINTENANCE_UPDATED, {"item_id": item_id, "event_id": event_id, "action": "deleted"})
 
+    async def import_water_history(_call: ServiceCall) -> None:
+        if not await async_import_water_history(hass, store):
+            raise HomeAssistantError("Recorder-historiken täcker inte hela perioden; ange en manuell baslinje")
+        hass.bus.async_fire(EVENT_WATER_UPDATED)
+
+    async def acknowledge_maintenance(call: ServiceCall) -> None:
+        from .sensor import _item_problem_signature
+
+        item_id = call.data[ATTR_ITEM_ID]
+        item = store.items.get(item_id)
+        if item is None:
+            raise HomeAssistantError("Underhållsobjektet finns inte")
+        signature = _item_problem_signature(hass, item)
+        if not signature or not await store.async_acknowledge_item(item_id, signature):
+            raise HomeAssistantError("Objektet har ingen aktiv varning att kvittera")
+        hass.bus.async_fire(EVENT_MAINTENANCE_UPDATED, {"item_id": item_id, "action": "acknowledged"})
+
     hass.services.async_register(DOMAIN, SERVICE_SET_WATER_BASELINE, set_water_baseline, schema=BASELINE_SCHEMA)
     hass.services.async_register(DOMAIN, SERVICE_CONFIGURE_ITEM, configure_item, schema=CONFIGURE_SCHEMA)
     hass.services.async_register(
@@ -161,6 +188,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         supports_response=SupportsResponse.OPTIONAL,
     )
     hass.services.async_register(DOMAIN, SERVICE_DELETE_MAINTENANCE, delete_maintenance, schema=DELETE_SCHEMA)
+    hass.services.async_register(DOMAIN, SERVICE_IMPORT_WATER_HISTORY, import_water_history)
+    hass.services.async_register(DOMAIN, SERVICE_ACKNOWLEDGE_MAINTENANCE, acknowledge_maintenance, schema=ACKNOWLEDGE_SCHEMA)
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     await async_setup_frontend(hass)
@@ -172,6 +201,13 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if unloaded:
         hass.data[DOMAIN].pop(entry.entry_id)
         if not hass.data[DOMAIN]:
-            for service in (SERVICE_SET_WATER_BASELINE, SERVICE_CONFIGURE_ITEM, SERVICE_RECORD_MAINTENANCE, SERVICE_DELETE_MAINTENANCE):
+            for service in (
+                SERVICE_SET_WATER_BASELINE,
+                SERVICE_CONFIGURE_ITEM,
+                SERVICE_RECORD_MAINTENANCE,
+                SERVICE_DELETE_MAINTENANCE,
+                SERVICE_IMPORT_WATER_HISTORY,
+                SERVICE_ACKNOWLEDGE_MAINTENANCE,
+            ):
                 hass.services.async_remove(DOMAIN, service)
     return unloaded

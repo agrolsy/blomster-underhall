@@ -7,6 +7,8 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.event import async_track_time_interval
 
 from .sensor import _item_status
+from .sensor import _item_problem_signature
+from .const import EVENT_MAINTENANCE_REMINDER
 from .storage import MaintenanceStore
 
 
@@ -18,8 +20,9 @@ async def async_start_reminders(hass: HomeAssistant, store: MaintenanceStore):
         active_ids: set[str] = set()
         for item in store.items.values():
             status = _item_status(hass, item)["status"]
+            signature = _item_problem_signature(hass, item)
             notification_id = f"blomster_maintenance_{item.item_id}"
-            if status not in {"due_soon", "overdue", "never"}:
+            if not signature or signature == item.acknowledged_signature:
                 persistent_notification.async_dismiss(hass, notification_id)
                 continue
             active_ids.add(notification_id)
@@ -27,12 +30,16 @@ async def async_start_reminders(hass: HomeAssistant, store: MaintenanceStore):
                 "overdue": "Underhåll är försenat",
                 "due_soon": "Underhåll närmar sig",
                 "never": "Underhåll är inte registrerat",
-            }[status]
+            }.get(status, "Extern underhållsvarning")
             persistent_notification.async_create(
                 hass,
                 f"{item.name}: {heading.lower()}.",
                 title=heading,
                 notification_id=notification_id,
+            )
+            hass.bus.async_fire(
+                EVENT_MAINTENANCE_REMINDER,
+                {"item_id": item.item_id, "name": item.name, "status": status, "signature": signature},
             )
 
     refresh()

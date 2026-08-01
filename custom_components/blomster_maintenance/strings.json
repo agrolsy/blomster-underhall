@@ -17,5 +17,19 @@
     "abort": {
       "already_configured": "Integrationen är redan konfigurerad."
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Ändra inställningar",
+        "data": {
+          "water_source_entity": "Grohe dagsförbrukning",
+          "water_installation_date": "Vattenmätarens installationsdatum",
+          "blade_usage_entity": "Bladanvändningstid",
+          "blade_warning_entity": "Bladslitagevarning",
+          "blade_interval_hours": "Bytesintervall för blad i timmar"
+        }
+      }
+    }
   }
 }
