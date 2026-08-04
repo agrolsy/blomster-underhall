@@ -12,6 +12,7 @@ from .const import (
     BLADE_REMAINING_SENSOR_UNIQUE_ID,
     CONF_BLADE_INTERVAL_HOURS,
     CONF_BLADE_USAGE_ENTITY,
+    CONF_BLADE_WARNING_ENTITY,
     DOMAIN,
     EVENT_MAINTENANCE_UPDATED,
     EVENT_WATER_UPDATED,
@@ -196,12 +197,18 @@ class BladeRemainingSensor(SensorEntity):
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         self.hass = hass
         self._usage_entity = entry.options.get(CONF_BLADE_USAGE_ENTITY, entry.data[CONF_BLADE_USAGE_ENTITY])
+        self._warning_entity = entry.options.get(CONF_BLADE_WARNING_ENTITY, entry.data[CONF_BLADE_WARNING_ENTITY])
         self._interval = float(entry.options.get(CONF_BLADE_INTERVAL_HOURS, entry.data[CONF_BLADE_INTERVAL_HOURS]))
 
     @property
     def native_value(self) -> float | None:
         used = _state_hours(self.hass, self._usage_entity)
-        return None if used is None else round(max(0.0, self._interval - used), 2)
+        if used is None:
+            return None
+        threshold = _state_hours(self.hass, self._warning_entity)
+        if threshold is None:
+            threshold = self._interval
+        return round(max(0.0, threshold - used), 2)
 
 
 class ServiceBookSensor(SensorEntity):

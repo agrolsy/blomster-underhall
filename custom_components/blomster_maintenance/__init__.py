@@ -47,6 +47,7 @@ from .const import (
     SERVICE_SET_WATER_BASELINE,
 )
 from .frontend import async_setup_frontend
+from .sensor import _state_hours
 from .storage import MaintenanceStore
 from .water import async_import_water_history, async_start_water_tracking
 
@@ -99,13 +100,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if hasattr(installation_value, "isoformat")
         else str(installation_value),
     )
+    blade_warning_entity = entry.options.get(CONF_BLADE_WARNING_ENTITY, entry.data[CONF_BLADE_WARNING_ENTITY])
+    blade_interval = _state_hours(hass, blade_warning_entity)
+    if blade_interval is None:
+        blade_interval = float(entry.options.get(CONF_BLADE_INTERVAL_HOURS, entry.data[CONF_BLADE_INTERVAL_HOURS]))
     await store.async_configure_item(
         item_id="luba_blades",
         name="Luba-knivar",
         interval_type="hours",
-        interval_value=float(entry.options.get(CONF_BLADE_INTERVAL_HOURS, entry.data[CONF_BLADE_INTERVAL_HOURS])),
+        interval_value=blade_interval,
         meter_entity=entry.options.get(CONF_BLADE_USAGE_ENTITY, entry.data[CONF_BLADE_USAGE_ENTITY]),
-        warning_entities=[entry.options.get(CONF_BLADE_WARNING_ENTITY, entry.data[CONF_BLADE_WARNING_ENTITY])],
+        warning_entities=[],
     )
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = store
 

@@ -2,11 +2,11 @@
 
 En egen Home Assistant-integration för husets underhåll, servicehistorik och mätarbaserade påminnelser.
 
-Version 0.6.0 hanterar bland annat:
+Version 0.6.1 hanterar bland annat:
 
 - egen beständig total för vattenförbrukning
 - vattenfilterbyten med sparad mätarställning
-- Mammotion Luba-blad med 150 timmars bytesintervall
+- Mammotion Luba-blad med bytesintervall som synkas live från Mammotions egen slitagevarning
 - både bladens användningstid och Mammotions egen slitagevarning
 - underhållshistorik med möjlighet att ta bort och ångra felaktiga poster
 - generella problem-entiteter och kvitteringsknappar per serviceobjekt
@@ -51,14 +51,18 @@ sensor.garden_hugo_ii_luba_vpqnssl9_bladanvandningstid
 sensor.garden_hugo_ii_luba_vpqnssl9_bladslitagevarningstid
 ```
 
-Bladen ska bytas efter 150 timmars användning. Integrationen skapar:
+`bladslitagevarningstid` är Mammotions egen tröskel för byte, i timmar (kan skilja sig från fabriksstandarden och skiftas om Mammotion ändrar den). Integrationen läser detta värde live och skapar:
 
 ```text
 sensor.luba_blad_aterstaende_tid
 binary_sensor.luba_blad_behover_bytas
 ```
 
-Varningen blir aktiv när antingen användningstiden når 150 timmar eller Mammotions egen slitagevarning är aktiv.
+`sensor.luba_blad_aterstaende_tid` = `bladslitagevarningstid − bladanvandningstid` (aldrig under 0). Om varningsentiteten är otillgänglig faller integrationen tillbaka på det konfigurerade bytesintervallet (`blade_interval_hours`, standard 150 timmar) tills den är tillgänglig igen.
+
+Varningen (`binary_sensor.luba_blad_behover_bytas`) blir aktiv när användningstiden når samma effektiva tröskel.
+
+**Version 0.6.1:** tidigare versioner räknade återstående tid mot det statiskt konfigurerade bytesintervallet i stället för mot `bladslitagevarningstid`, vilket kunde visa fel återstående tid jämfört med Mammotion-appen. Samma sensor skickades även in som en generell `warning_entities`-post, vilket fick problemsensorn att permanent visa "aktiv" eftersom mekanismen tolkar alla icke-tomma numeriska värden som en aktiv varning. Båda är fixade.
 
 ## Generella varningar och kvittering
 

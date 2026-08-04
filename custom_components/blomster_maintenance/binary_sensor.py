@@ -17,8 +17,6 @@ from .reminders import async_start_reminders
 from .sensor import _item_problem_signature, _state_hours
 from .storage import MaintenanceStore
 
-_INACTIVE_WARNING_STATES = {"", "0", "false", "none", "off", "ok", "unknown", "unavailable"}
-
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -72,11 +70,14 @@ class BladeReplacementDueBinarySensor(BinarySensorEntity):
         self._interval = float(entry.options.get(CONF_BLADE_INTERVAL_HOURS, entry.data[CONF_BLADE_INTERVAL_HOURS]))
 
     @property
+    def _effective_interval(self) -> float:
+        threshold = _state_hours(self.hass, self._warning_entity)
+        return threshold if threshold is not None else self._interval
+
+    @property
     def is_on(self) -> bool:
         used = _state_hours(self.hass, self._usage_entity)
-        warning = self.hass.states.get(self._warning_entity)
-        warning_active = bool(warning and warning.state.strip().casefold() not in _INACTIVE_WARNING_STATES)
-        return warning_active or (used is not None and used >= self._interval)
+        return used is not None and used >= self._effective_interval
 
     @property
     def extra_state_attributes(self):
@@ -86,7 +87,7 @@ class BladeReplacementDueBinarySensor(BinarySensorEntity):
             "warning_entity": self._warning_entity,
             "warning_state": warning.state if warning else None,
             "used_hours": _state_hours(self.hass, self._usage_entity),
-            "replacement_interval_hours": self._interval,
+            "replacement_interval_hours": self._effective_interval,
         }
 
 
