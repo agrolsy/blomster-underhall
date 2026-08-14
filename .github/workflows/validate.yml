@@ -1,12 +1,14 @@
 name: Validate
 
+# Körs på den isolerade HP/CI-VM:ns repo-specifika runner (#5).
+
 on:
   push:
   pull_request:
 
 jobs:
   tests:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, blomster-underhall-ci]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -17,13 +19,13 @@ jobs:
       - run: pytest -q
 
   hassfest:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, blomster-underhall-ci]
     steps:
       - uses: actions/checkout@v4
       - uses: home-assistant/actions/hassfest@master
 
   hacs:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, blomster-underhall-ci]
     steps:
       - uses: actions/checkout@v4
       - uses: hacs/action@main
