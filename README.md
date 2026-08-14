@@ -8,6 +8,9 @@ Validerings- och säkerhetsjobben körs på den isolerade HP/CI-VM:ns repo-speci
 runner `blomster-underhall-ci`. Runnern delar endast versionsstyrda programfiler med
 övriga runners; credentials, etiketter, loggar och arbetskatalog är repo-specifika. Ett
 VM-globalt jobblås hindrar att flera repon överbelastar maskinen samtidigt.
+Eftersom repot är publikt körs self-hosted-jobben bara för brancher i originalrepot;
+kod från fork-PR:er körs inte på den beständiga VM:n utan måste verifieras lokalt innan
+den tas in på en intern branch.
 
 Om GitHub Actions eller runnern är otillgänglig körs grundkontrollerna lokalt:
 
