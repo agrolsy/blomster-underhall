@@ -52,6 +52,12 @@ class BlomsterMaintenanceCard extends HTMLElement {
     return `${value}${event.meter_unit ? ` ${event.meter_unit}` : ""}`;
   }
 
+  _formatDelta(event) {
+    if (event.meter_delta === null || event.meter_delta === undefined) return "–";
+    const value = new Intl.NumberFormat("sv-SE", { maximumFractionDigits: 1 }).format(event.meter_delta);
+    return `${value}${event.meter_unit ? ` ${event.meter_unit}` : ""}`;
+  }
+
   _collectRows() {
     const rows = [];
     for (const entityId of this._config.entities) {
@@ -60,8 +66,23 @@ class BlomsterMaintenanceCard extends HTMLElement {
       const name = state.attributes.friendly_name || entityId;
       const itemId = state.attributes.item_id;
       const history = Array.isArray(state.attributes.history) ? state.attributes.history : [];
+      let previousMeterValue = null;
+      let previousMeterUnit = null;
       for (const event of history) {
-        rows.push({ ...event, name, itemId, entityId });
+        let meterDelta = null;
+        if (
+          previousMeterValue !== null &&
+          event.meter_value !== null &&
+          event.meter_value !== undefined &&
+          (!previousMeterUnit || !event.meter_unit || previousMeterUnit === event.meter_unit)
+        ) {
+          meterDelta = Math.max(0, Number(event.meter_value) - Number(previousMeterValue));
+        }
+        rows.push({ ...event, meter_delta: meterDelta, name, itemId, entityId });
+        if (event.meter_value !== null && event.meter_value !== undefined) {
+          previousMeterValue = event.meter_value;
+          previousMeterUnit = event.meter_unit || null;
+        }
       }
     }
     rows.sort((a, b) => new Date(b.performed_at) - new Date(a.performed_at));
@@ -101,13 +122,14 @@ class BlomsterMaintenanceCard extends HTMLElement {
     if (!this.shadowRoot || !this._hass || !this._config) return;
     const rows = this._collectRows();
     const actionHeader = this._config.show_delete ? "<th>Åtgärd</th>" : "";
-    const colspan = this._config.show_delete ? 5 : 4;
+    const colspan = this._config.show_delete ? 6 : 5;
     const body = rows.length
       ? rows.map((event) => `
           <tr>
             <td>${this._escape(this._formatDate(event.performed_at))}</td>
             <td>${this._escape(event.name)}</td>
             <td class="meter">${this._escape(this._formatMeter(event))}</td>
+            <td class="meter">${this._escape(this._formatDelta(event))}</td>
             <td>${this._escape(event.note || "–")}</td>
             ${this._config.show_delete ? `<td class="action"><button type="button" data-item-id="${this._escape(event.itemId)}" data-event-id="${this._escape(event.event_id)}" data-name="${this._escape(event.name)}">Ta bort</button></td>` : ""}
           </tr>`).join("")
@@ -118,12 +140,12 @@ class BlomsterMaintenanceCard extends HTMLElement {
         ha-card { overflow: hidden; }
         .header { padding: 20px 20px 12px; font-size: 24px; font-weight: 400; }
         .wrap { overflow-x: auto; padding: 0 16px 16px; }
-        table { width: 100%; border-collapse: collapse; min-width: 650px; }
+        table { width: 100%; border-collapse: collapse; min-width: 760px; }
         th { text-align: left; font-size: 13px; color: var(--secondary-text-color); padding: 10px 12px; border-bottom: 1px solid var(--divider-color); }
         td { padding: 12px; border-bottom: 1px solid var(--divider-color); vertical-align: top; }
         tbody tr:last-child td { border-bottom: 0; }
         .meter { text-align: right; white-space: nowrap; }
-        th:nth-child(3) { text-align: right; }
+        th:nth-child(3), th:nth-child(4) { text-align: right; }
         td:first-child { white-space: nowrap; }
         .action { text-align: right; white-space: nowrap; }
         button { border: 0; border-radius: 8px; padding: 7px 10px; cursor: pointer; background: var(--error-color); color: var(--text-primary-color, white); font: inherit; }
@@ -143,6 +165,7 @@ class BlomsterMaintenanceCard extends HTMLElement {
                 <th>Datum</th>
                 <th>Underhåll</th>
                 <th>Mätarvärde</th>
+                <th>Diff</th>
                 <th>Anteckning</th>
                 ${actionHeader}
               </tr>
