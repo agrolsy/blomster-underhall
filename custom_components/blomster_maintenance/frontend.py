@@ -11,7 +11,7 @@ from homeassistant.exceptions import HomeAssistantError
 
 _LOGGER = logging.getLogger(__name__)
 
-CARD_URL = "/blomster_maintenance/blomster-maintenance-card.js?v=0.6.0"
+CARD_URL = "/blomster_maintenance/blomster-maintenance-card.js?v=0.7.0"
 CARD_URL_BASE = "/blomster_maintenance/blomster-maintenance-card.js"
 DASHBOARD_URL_PATH = "blomster-underhall"
 DASHBOARD_TITLE = "Blomster Underhåll"
@@ -28,18 +28,17 @@ DASHBOARD_CONFIG: dict[str, Any] = {
             "sections": [
                 {
                     "type": "grid",
+                    "column_span": 3,
                     "cards": [
                         {
-                            "type": "markdown",
-                            "title": "Digital servicebok",
-                            "content": (
-                                "Här samlas husets underhåll, serviceintervall, kostnader, "
-                                "mätarställningar, dokument och påminnelser. Lägg till eller "
-                                "uppdatera objekt med tjänsten "
-                                "`blomster_maintenance.configure_item` och registrera utfört "
-                                "underhåll med `blomster_maintenance.record_maintenance`."
-                            ),
-                        },
+                            "type": "custom:blomster-maintenance-manager-card",
+                            "title": "Underhåll",
+                        }
+                    ],
+                },
+                {
+                    "type": "grid",
+                    "cards": [
                         {
                             "type": "entities",
                             "title": "Översikt",
@@ -48,55 +47,22 @@ DASHBOARD_CONFIG: dict[str, Any] = {
                                 "sensor.servicebok",
                                 "sensor.ackumulerad_vattenforbrukning",
                                 "sensor.vatten_sedan_filterbyte",
+                                "sensor.vatten_sedan_filterbyte_bomull",
                                 "sensor.luba_blad_aterstaende_tid",
-                                "binary_sensor.luba_blad_behover_bytas",
-                                "binary_sensor.vattenfilter_problem",
-                                "button.kvittera_vattenfilter",
-                                "binary_sensor.luba_knivar_problem",
-                                "button.kvittera_luba_knivar",
                             ],
-                        },
-                    ],
-                },
-                {
-                    "type": "grid",
-                    "cards": [
-                        {
-                            "type": "custom:blomster-maintenance-card",
-                            "title": "Underhållshistorik",
-                            "entities": [
-                                "sensor.vattenfilter",
-                                "sensor.luba_knivar",
-                            ],
-                            "max_rows": 20,
-                            "show_delete": True,
                         }
                     ],
                 },
                 {
                     "type": "grid",
+                    "column_span": 3,
                     "cards": [
                         {
-                            "type": "markdown",
-                            "title": "Det här kan systemet",
-                            "content": (
-                                "- Egna underhållsobjekt för hela huset\n"
-                                "- Intervall i dagar, liter, timmar eller starter\n"
-                                "- Manualer, kvitton och bilder via länkar\n"
-                                "- Kostnadslogg och årssammanställning\n"
-                                "- Automatisk status och påminnelser\n"
-                                "- Säker borttagning och ångring av historikposter"
-                            ),
-                        },
-                        {
-                            "type": "markdown",
-                            "title": "Exempel på objekt",
-                            "content": (
-                                "Vattenfilter, IVT-värmepump, FTX, varmvattenberedare, "
-                                "hängrännor, röklarm, Luba-knivar och andra komponenter kan "
-                                "läggas in med egna serviceintervall och dokument."
-                            ),
-                        },
+                            "type": "custom:blomster-maintenance-card",
+                            "title": "Underhållshistorik",
+                            "max_rows": 20,
+                            "show_delete": True,
+                        }
                     ],
                 },
             ],
