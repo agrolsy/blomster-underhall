@@ -21,7 +21,11 @@ from .const import (
 )
 from .storage import MaintenanceItem, MaintenanceStore
 
-_PREDEFINED_ITEMS = {"luba_blades": "Luba-knivar", "water_filter": "Vattenfilter"}
+_PREDEFINED_ITEMS = {
+    "luba_blades": "Luba-knivar",
+    "water_filter": "Vattenfilter kol",
+    "water_filter_cotton": "Vattenfilter bomull",
+}
 _INACTIVE_WARNING_STATES = {"", "0", "false", "none", "off", "ok", "unknown", "unavailable"}
 
 
@@ -105,18 +109,32 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     store: MaintenanceStore = hass.data[DOMAIN][entry.entry_id]
     water = WaterTotalSensor(hass, store)
     blade = BladeRemainingSensor(hass, entry)
-    water_since_filter = WaterSinceFilterSensor(hass, store)
+    water_since_carbon = WaterSinceFilterSensor(
+        hass,
+        store,
+        item_id="water_filter",
+        name="Vatten sedan filterbyte kol",
+        unique_suffix="carbon",
+    )
+    water_since_cotton = WaterSinceFilterSensor(
+        hass,
+        store,
+        item_id="water_filter_cotton",
+        name="Vatten sedan filterbyte bomull",
+        unique_suffix="cotton",
+    )
     servicebook = ServiceBookSensor(hass, store)
     entities: dict[str, MaintenanceSensor] = {
         item_id: MaintenanceSensor(hass, store, item_id, name)
         for item_id, name in _PREDEFINED_ITEMS.items()
     }
-    async_add_entities([water, blade, water_since_filter, servicebook, *entities.values()])
+    async_add_entities([water, blade, water_since_carbon, water_since_cotton, servicebook, *entities.values()])
 
     @callback
     def sync_water(_event=None) -> None:
         water.async_write_ha_state()
-        water_since_filter.async_write_ha_state()
+        water_since_carbon.async_write_ha_state()
+        water_since_cotton.async_write_ha_state()
         servicebook.async_write_ha_state()
 
     @callback
@@ -131,7 +149,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
             async_add_entities(new_entities)
         for entity in entities.values():
             entity.async_write_ha_state()
-        water_since_filter.async_write_ha_state()
+        water_since_carbon.async_write_ha_state()
+        water_since_cotton.async_write_ha_state()
         servicebook.async_write_ha_state()
 
     entry.async_on_unload(hass.bus.async_listen(EVENT_WATER_UPDATED, sync_water))
@@ -167,20 +186,28 @@ class WaterTotalSensor(SensorEntity):
 
 
 class WaterSinceFilterSensor(SensorEntity):
-    _attr_name = "Vatten sedan filterbyte"
-    _attr_unique_id = f"{DOMAIN}_water_since_filter"
     _attr_icon = "mdi:water-sync"
     _attr_native_unit_of_measurement = UnitOfVolume.LITERS
     _attr_device_class = SensorDeviceClass.WATER
     _attr_state_class = SensorStateClass.TOTAL
 
-    def __init__(self, hass: HomeAssistant, store: MaintenanceStore) -> None:
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        store: MaintenanceStore,
+        item_id: str,
+        name: str,
+        unique_suffix: str,
+    ) -> None:
         self.hass = hass
         self._store = store
+        self._item_id = item_id
+        self._attr_name = name
+        self._attr_unique_id = f"{DOMAIN}_water_since_filter_{unique_suffix}"
 
     @property
     def native_value(self) -> float | None:
-        item = self._store.items.get("water_filter")
+        item = self._store.items.get(self._item_id)
         if not item or not item.events or item.events[-1].meter_value is None:
             return None
         return round(max(0.0, _live_accumulated_liters(self.hass, self._store) - item.events[-1].meter_value), 3)
