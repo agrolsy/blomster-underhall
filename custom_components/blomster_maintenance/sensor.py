@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import calendar
 from datetime import datetime, timedelta
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorStateClass
@@ -21,8 +22,13 @@ from .const import (
 )
 from .storage import MaintenanceItem, MaintenanceStore
 
-_PREDEFINED_ITEMS = {"luba_blades": "Luba-knivar", "water_filter": "Vattenfilter"}
+_PREDEFINED_ITEMS = {
+    "luba_blades": "Luba-knivar",
+    "water_filter": "Vattenfilter kol",
+    "water_filter_cotton": "Vattenfilter bomull",
+}
 _INACTIVE_WARNING_STATES = {"", "0", "false", "none", "off", "ok", "unknown", "unavailable"}
+_TIME_INTERVAL_TYPES = {"days", "weeks", "months", "years"}
 
 
 def _numeric_state(hass: HomeAssistant, entity_id: str | None) -> float | None:
@@ -61,6 +67,25 @@ def _live_accumulated_liters(hass: HomeAssistant, store: MaintenanceStore) -> fl
     return accumulated + max(0.0, pending_delta)
 
 
+def _add_calendar_interval(value: datetime, interval_type: str, amount: float) -> datetime:
+    if interval_type == "days":
+        return value + timedelta(days=amount)
+    if interval_type == "weeks":
+        return value + timedelta(weeks=amount)
+
+    whole = max(1, int(amount))
+    if interval_type == "years":
+        target_year = value.year + whole
+        day = min(value.day, calendar.monthrange(target_year, value.month)[1])
+        return value.replace(year=target_year, day=day)
+
+    month_index = value.year * 12 + (value.month - 1) + whole
+    target_year, month_zero = divmod(month_index, 12)
+    target_month = month_zero + 1
+    day = min(value.day, calendar.monthrange(target_year, target_month)[1])
+    return value.replace(year=target_year, month=target_month, day=day)
+
+
 def _item_status(hass: HomeAssistant, item: MaintenanceItem) -> dict:
     if not item.interval_type or not item.interval_value:
         return {"status": "not_configured", "remaining": None, "next_due": None}
@@ -70,8 +95,8 @@ def _item_status(hass: HomeAssistant, item: MaintenanceItem) -> dict:
     last = item.events[-1]
     remaining: float | None = None
     next_due: str | None = None
-    if item.interval_type == "days":
-        due = datetime.fromisoformat(last.performed_at) + timedelta(days=item.interval_value)
+    if item.interval_type in _TIME_INTERVAL_TYPES:
+        due = _add_calendar_interval(datetime.fromisoformat(last.performed_at), item.interval_type, item.interval_value)
         remaining = (due - datetime.now().astimezone()).total_seconds() / 86400
         next_due = due.isoformat()
     else:
@@ -83,6 +108,8 @@ def _item_status(hass: HomeAssistant, item: MaintenanceItem) -> dict:
         status = "unknown"
     elif remaining <= 0:
         status = "overdue"
+    elif item.interval_type in _TIME_INTERVAL_TYPES:
+        status = "due_soon" if remaining <= 7 else "ok"
     elif remaining <= max(1.0, item.interval_value * 0.1):
         status = "due_soon"
     else:
@@ -105,18 +132,24 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     store: MaintenanceStore = hass.data[DOMAIN][entry.entry_id]
     water = WaterTotalSensor(hass, store)
     blade = BladeRemainingSensor(hass, entry)
-    water_since_filter = WaterSinceFilterSensor(hass, store)
+    water_since_carbon = WaterSinceFilterSensor(
+        hass, store, "water_filter", "Vatten sedan filterbyte kol", f"{DOMAIN}_water_since_filter"
+    )
+    water_since_cotton = WaterSinceFilterSensor(
+        hass, store, "water_filter_cotton", "Vatten sedan filterbyte bomull", f"{DOMAIN}_water_since_filter_cotton"
+    )
     servicebook = ServiceBookSensor(hass, store)
     entities: dict[str, MaintenanceSensor] = {
         item_id: MaintenanceSensor(hass, store, item_id, name)
         for item_id, name in _PREDEFINED_ITEMS.items()
     }
-    async_add_entities([water, blade, water_since_filter, servicebook, *entities.values()])
+    async_add_entities([water, blade, water_since_carbon, water_since_cotton, servicebook, *entities.values()])
 
     @callback
     def sync_water(_event=None) -> None:
         water.async_write_ha_state()
-        water_since_filter.async_write_ha_state()
+        water_since_carbon.async_write_ha_state()
+        water_since_cotton.async_write_ha_state()
         servicebook.async_write_ha_state()
 
     @callback
@@ -131,7 +164,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
             async_add_entities(new_entities)
         for entity in entities.values():
             entity.async_write_ha_state()
-        water_since_filter.async_write_ha_state()
+        water_since_carbon.async_write_ha_state()
+        water_since_cotton.async_write_ha_state()
         servicebook.async_write_ha_state()
 
     entry.async_on_unload(hass.bus.async_listen(EVENT_WATER_UPDATED, sync_water))
@@ -167,20 +201,21 @@ class WaterTotalSensor(SensorEntity):
 
 
 class WaterSinceFilterSensor(SensorEntity):
-    _attr_name = "Vatten sedan filterbyte"
-    _attr_unique_id = f"{DOMAIN}_water_since_filter"
     _attr_icon = "mdi:water-sync"
     _attr_native_unit_of_measurement = UnitOfVolume.LITERS
     _attr_device_class = SensorDeviceClass.WATER
     _attr_state_class = SensorStateClass.TOTAL
 
-    def __init__(self, hass: HomeAssistant, store: MaintenanceStore) -> None:
+    def __init__(self, hass: HomeAssistant, store: MaintenanceStore, item_id: str, name: str, unique_id: str) -> None:
         self.hass = hass
         self._store = store
+        self._item_id = item_id
+        self._attr_name = name
+        self._attr_unique_id = unique_id
 
     @property
     def native_value(self) -> float | None:
-        item = self._store.items.get("water_filter")
+        item = self._store.items.get(self._item_id)
         if not item or not item.events or item.events[-1].meter_value is None:
             return None
         return round(max(0.0, _live_accumulated_liters(self.hass, self._store) - item.events[-1].meter_value), 3)
@@ -223,10 +258,8 @@ class ServiceBookSensor(SensorEntity):
     @property
     def native_value(self) -> int:
         return sum(
-            1
-            for item in self._store.items.values()
-            if (signature := _item_problem_signature(self.hass, item))
-            and signature != item.acknowledged_signature
+            1 for item in self._store.items.values()
+            if (signature := _item_problem_signature(self.hass, item)) and signature != item.acknowledged_signature
         )
 
     @property
@@ -274,9 +307,10 @@ class MaintenanceSensor(SensorEntity):
     def extra_state_attributes(self):
         item = self._store.items.get(self._item_id)
         if not item:
-            return {"item_id": self._item_id, "registered": False, "history": []}
+            return {"maintenance_domain": DOMAIN, "item_id": self._item_id, "registered": False, "history": []}
         status = _item_status(self.hass, item)
         return {
+            "maintenance_domain": DOMAIN,
             "item_id": item.item_id,
             "registered": bool(item.events),
             "category": item.category,

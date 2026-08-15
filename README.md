@@ -23,16 +23,27 @@ Hassfest- och HACS-kontrollerna kör containerbaserade actions i CI. En manuell
 reservkörning ska därför redovisas uttryckligen i PR:n om dessa två kontroller inte har
 kunnat köras lokalt.
 
-Version 0.6.1 hanterar bland annat:
+Version 0.7.0 hanterar bland annat:
 
 - egen beständig total för vattenförbrukning
-- vattenfilterbyten med sparad mätarställning
+- separata vattenfilter kol och bomull med egen byteshistorik
+- diff mellan efterföljande mätarställningar i underhållshistoriken
+- dynamiska underhållsobjekt som kan skapas direkt från dashboarden
+- tidsintervall i dagar, veckor, månader och år
+- mätarbaserade intervall mot valfri numerisk Home Assistant-sensor
 - Mammotion Luba-blad med bytesintervall som synkas live från Mammotions egen slitagevarning
-- både bladens användningstid och Mammotions egen slitagevarning
 - underhållshistorik med möjlighet att ta bort och ångra felaktiga poster
 - generella problem-entiteter och kvitteringsknappar per serviceobjekt
 - flera samtidiga externa varningsvillkor per objekt
 - beständiga notiser och återkommande `blomster_maintenance_reminder`-event
+
+## Dynamiska underhållsobjekt
+
+Kortet `custom:blomster-maintenance-manager-card` visar befintliga underhållsobjekt och låter dig skapa nya utan kod- eller YAML-ändringar. Ange namn, intervall och om intervallet ska baseras på tid eller på en mätare/sensor.
+
+För tid kan du välja dagar, veckor, månader eller år. Månader och år räknas kalenderbaserat. För mätarbaserade intervall väljs en numerisk Home Assistant-sensor och dess enhet används automatiskt.
+
+Nya objekt får automatiskt en underhållssensor, problemsensor och kvitteringsknapp. Managerkortet visar en knapp för att registrera utfört underhåll, och historikkortet hittar objekten automatiskt.
 
 ## Vattenförbrukning
 
@@ -83,8 +94,6 @@ binary_sensor.luba_blad_behover_bytas
 
 Varningen (`binary_sensor.luba_blad_behover_bytas`) blir aktiv när användningstiden når samma effektiva tröskel.
 
-**Version 0.6.1:** tidigare versioner räknade återstående tid mot det statiskt konfigurerade bytesintervallet i stället för mot `bladslitagevarningstid`, vilket kunde visa fel återstående tid jämfört med Mammotion-appen. Samma sensor skickades även in som en generell `warning_entities`-post, vilket fick problemsensorn att permanent visa "aktiv" eftersom mekanismen tolkar alla icke-tomma numeriska värden som en aktiv varning. Båda är fixade.
-
 ## Generella varningar och kvittering
 
 `configure_item` accepterar `warning_entities`, en lista med externa villkor
@@ -101,18 +110,20 @@ att integrationen behöver tas bort och läggas till igen.
 
 Tjänsten `blomster_maintenance.record_maintenance` sparar datum, anteckning och vald mätarställning. Varje historikpost får ett stabilt unikt ID. Datan lagras lokalt med Home Assistants Store-API under `.storage` och följer med vanliga Home Assistant-backuper.
 
-Exempel för vattenfilter:
+Exempel för kolfilter:
 
 ```yaml
 action: blomster_maintenance.record_maintenance
 data:
   item_id: water_filter
-  name: Vattenfilter
+  name: Vattenfilter kol
   meter_entity: sensor.ackumulerad_vattenforbrukning
   note: Nytt filter monterat.
 ```
 
-Det anpassade Lovelace-kortet visar en **Ta bort**-knapp på varje rad. Borttagningen kräver bekräftelse, sker i integrationens backend och uppdaterar historik samt berörda sensorer direkt.
+Det anpassade Lovelace-kortet visar datum, mätarvärde och diff mot föregående registrering för samma objekt. Första registreringen visar `–` som diff eftersom tidigare mätarvärde saknas.
+
+Kortet visar också en **Ta bort**-knapp på varje rad. Borttagningen kräver bekräftelse, sker i integrationens backend och uppdaterar historik samt berörda sensorer direkt.
 
 Samma funktion kan användas manuellt:
 

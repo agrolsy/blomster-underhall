@@ -14,7 +14,7 @@ set_water_baseline:
 
 configure_item:
   name: Skapa eller uppdatera serviceobjekt
-  description: Skapar ett underhållsobjekt och sparar metadata, dokumentlänkar samt serviceintervall.
+  description: Skapar ett underhållsobjekt och sparar metadata, mätare samt serviceintervall.
   fields:
     item_id:
       name: ID
@@ -48,15 +48,20 @@ configure_item:
         select:
           options:
             - {value: days, label: Dagar}
-            - {value: liters, label: Liter}
-            - {value: hours, label: Timmar}
-            - {value: starts, label: Antal starter}
+            - {value: weeks, label: Veckor}
+            - {value: months, label: Månader}
+            - {value: years, label: År}
+            - {value: meter, label: Valfri mätare/sensor}
+            - {value: liters, label: Liter (bakåtkompatibilitet)}
+            - {value: hours, label: Timmar (bakåtkompatibilitet)}
+            - {value: starts, label: Antal starter (bakåtkompatibilitet)}
     interval_value:
       name: Intervall
       selector:
         number: {min: 0, step: 0.1, mode: box}
     meter_entity:
       name: Mätarentitet
+      description: För mätarbaserat intervall väljs den numeriska sensor vars förändring ska räknas.
       selector:
         entity: {domain: sensor}
     manual_url:
@@ -112,6 +117,10 @@ delete_maintenance:
       name: Underhålls-ID
       required: true
       selector: {text: {}}
+    event_id:
+      name: Händelse-ID
+      required: true
+      selector: {text: {}}
 
 import_water_history:
   name: Importera vattenhistorik
@@ -123,9 +132,5 @@ acknowledge_maintenance:
   fields:
     item_id:
       name: Underhålls-ID
-      required: true
-      selector: {text: {}}
-    event_id:
-      name: Händelse-ID
       required: true
       selector: {text: {}}

@@ -66,7 +66,9 @@ CONFIGURE_SCHEMA = vol.Schema({
     vol.Optional(ATTR_MODEL): cv.string,
     vol.Optional(ATTR_SERIAL_NUMBER): cv.string,
     vol.Optional(ATTR_INSTALLED_AT): cv.string,
-    vol.Optional(ATTR_INTERVAL_TYPE): vol.In(["days", "liters", "hours", "starts"]),
+    vol.Optional(ATTR_INTERVAL_TYPE): vol.In([
+        "days", "weeks", "months", "years", "meter", "liters", "hours", "starts"
+    ]),
     vol.Optional(ATTR_INTERVAL_VALUE): vol.All(vol.Coerce(float), vol.Range(min=0)),
     vol.Optional(ATTR_METER_ENTITY): cv.entity_id,
     vol.Optional(ATTR_MANUAL_URL): cv.string,
@@ -110,6 +112,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         interval_type="hours",
         interval_value=blade_interval,
         meter_entity=entry.options.get(CONF_BLADE_USAGE_ENTITY, entry.data[CONF_BLADE_USAGE_ENTITY]),
+        warning_entities=[],
+    )
+    await store.async_configure_item(
+        item_id="water_filter",
+        name="Vattenfilter kol",
+        meter_entity="sensor.ackumulerad_vattenforbrukning",
+        warning_entities=[],
+    )
+    await store.async_configure_item(
+        item_id="water_filter_cotton",
+        name="Vattenfilter bomull",
+        meter_entity="sensor.ackumulerad_vattenforbrukning",
         warning_entities=[],
     )
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = store
