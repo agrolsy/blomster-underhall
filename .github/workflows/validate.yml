@@ -1,12 +1,20 @@
 name: Validate
 
+# Körs på den isolerade HP/CI-VM:ns repo-specifika runner (#5).
+
 on:
   push:
+    branches: [main]
   pull_request:
+
+concurrency:
+  group: validate-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   tests:
-    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, linux, x64, blomster-underhall-ci]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -17,13 +25,15 @@ jobs:
       - run: pytest -q
 
   hassfest:
-    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, linux, x64, blomster-underhall-ci]
     steps:
       - uses: actions/checkout@v4
       - uses: home-assistant/actions/hassfest@master
 
   hacs:
-    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, linux, x64, blomster-underhall-ci]
     steps:
       - uses: actions/checkout@v4
       - uses: hacs/action@main

@@ -2,6 +2,27 @@
 
 En egen Home Assistant-integration för husets underhåll, servicehistorik och mätarbaserade påminnelser.
 
+## CI och lokal reservkörning
+
+Validerings- och säkerhetsjobben körs på den isolerade HP/CI-VM:ns repo-specifika
+runner `blomster-underhall-ci`. Runnern delar endast versionsstyrda programfiler med
+övriga runners; credentials, etiketter, loggar och arbetskatalog är repo-specifika. Ett
+VM-globalt jobblås hindrar att flera repon överbelastar maskinen samtidigt.
+Eftersom repot är publikt körs self-hosted-jobben bara för brancher i originalrepot;
+kod från fork-PR:er körs inte på den beständiga VM:n utan måste verifieras lokalt innan
+den tas in på en intern branch.
+
+Om GitHub Actions eller runnern är otillgänglig körs grundkontrollerna lokalt:
+
+```bash
+python -m compileall -q custom_components
+python -m pytest -q
+```
+
+Hassfest- och HACS-kontrollerna kör containerbaserade actions i CI. En manuell
+reservkörning ska därför redovisas uttryckligen i PR:n om dessa två kontroller inte har
+kunnat köras lokalt.
+
 Version 0.6.1 hanterar bland annat:
 
 - egen beständig total för vattenförbrukning
