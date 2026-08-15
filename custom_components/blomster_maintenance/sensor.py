@@ -114,14 +114,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
         store,
         item_id="water_filter",
         name="Vatten sedan filterbyte kol",
-        unique_suffix="carbon",
+        unique_id=f"{DOMAIN}_water_since_filter",
     )
     water_since_cotton = WaterSinceFilterSensor(
         hass,
         store,
         item_id="water_filter_cotton",
         name="Vatten sedan filterbyte bomull",
-        unique_suffix="cotton",
+        unique_id=f"{DOMAIN}_water_since_filter_cotton",
     )
     servicebook = ServiceBookSensor(hass, store)
     entities: dict[str, MaintenanceSensor] = {
@@ -197,13 +197,13 @@ class WaterSinceFilterSensor(SensorEntity):
         store: MaintenanceStore,
         item_id: str,
         name: str,
-        unique_suffix: str,
+        unique_id: str,
     ) -> None:
         self.hass = hass
         self._store = store
         self._item_id = item_id
         self._attr_name = name
-        self._attr_unique_id = f"{DOMAIN}_water_since_filter_{unique_suffix}"
+        self._attr_unique_id = unique_id
 
     @property
     def native_value(self) -> float | None:
