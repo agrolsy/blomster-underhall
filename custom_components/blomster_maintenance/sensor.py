@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import calendar
 from datetime import datetime, timedelta
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorStateClass
@@ -27,6 +28,7 @@ _PREDEFINED_ITEMS = {
     "water_filter_cotton": "Vattenfilter bomull",
 }
 _INACTIVE_WARNING_STATES = {"", "0", "false", "none", "off", "ok", "unknown", "unavailable"}
+_TIME_INTERVAL_TYPES = {"days", "weeks", "months", "years"}
 
 
 def _numeric_state(hass: HomeAssistant, entity_id: str | None) -> float | None:
@@ -65,6 +67,25 @@ def _live_accumulated_liters(hass: HomeAssistant, store: MaintenanceStore) -> fl
     return accumulated + max(0.0, pending_delta)
 
 
+def _add_calendar_interval(value: datetime, interval_type: str, amount: float) -> datetime:
+    if interval_type == "days":
+        return value + timedelta(days=amount)
+    if interval_type == "weeks":
+        return value + timedelta(weeks=amount)
+
+    whole = max(1, int(amount))
+    if interval_type == "years":
+        target_year = value.year + whole
+        day = min(value.day, calendar.monthrange(target_year, value.month)[1])
+        return value.replace(year=target_year, day=day)
+
+    month_index = value.year * 12 + (value.month - 1) + whole
+    target_year, month_zero = divmod(month_index, 12)
+    target_month = month_zero + 1
+    day = min(value.day, calendar.monthrange(target_year, target_month)[1])
+    return value.replace(year=target_year, month=target_month, day=day)
+
+
 def _item_status(hass: HomeAssistant, item: MaintenanceItem) -> dict:
     if not item.interval_type or not item.interval_value:
         return {"status": "not_configured", "remaining": None, "next_due": None}
@@ -74,8 +95,8 @@ def _item_status(hass: HomeAssistant, item: MaintenanceItem) -> dict:
     last = item.events[-1]
     remaining: float | None = None
     next_due: str | None = None
-    if item.interval_type == "days":
-        due = datetime.fromisoformat(last.performed_at) + timedelta(days=item.interval_value)
+    if item.interval_type in _TIME_INTERVAL_TYPES:
+        due = _add_calendar_interval(datetime.fromisoformat(last.performed_at), item.interval_type, item.interval_value)
         remaining = (due - datetime.now().astimezone()).total_seconds() / 86400
         next_due = due.isoformat()
     else:
@@ -87,6 +108,8 @@ def _item_status(hass: HomeAssistant, item: MaintenanceItem) -> dict:
         status = "unknown"
     elif remaining <= 0:
         status = "overdue"
+    elif item.interval_type in _TIME_INTERVAL_TYPES:
+        status = "due_soon" if remaining <= 7 else "ok"
     elif remaining <= max(1.0, item.interval_value * 0.1):
         status = "due_soon"
     else:
@@ -110,18 +133,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     water = WaterTotalSensor(hass, store)
     blade = BladeRemainingSensor(hass, entry)
     water_since_carbon = WaterSinceFilterSensor(
-        hass,
-        store,
-        item_id="water_filter",
-        name="Vatten sedan filterbyte kol",
-        unique_id=f"{DOMAIN}_water_since_filter",
+        hass, store, "water_filter", "Vatten sedan filterbyte kol", f"{DOMAIN}_water_since_filter"
     )
     water_since_cotton = WaterSinceFilterSensor(
-        hass,
-        store,
-        item_id="water_filter_cotton",
-        name="Vatten sedan filterbyte bomull",
-        unique_id=f"{DOMAIN}_water_since_filter_cotton",
+        hass, store, "water_filter_cotton", "Vatten sedan filterbyte bomull", f"{DOMAIN}_water_since_filter_cotton"
     )
     servicebook = ServiceBookSensor(hass, store)
     entities: dict[str, MaintenanceSensor] = {
@@ -191,14 +206,7 @@ class WaterSinceFilterSensor(SensorEntity):
     _attr_device_class = SensorDeviceClass.WATER
     _attr_state_class = SensorStateClass.TOTAL
 
-    def __init__(
-        self,
-        hass: HomeAssistant,
-        store: MaintenanceStore,
-        item_id: str,
-        name: str,
-        unique_id: str,
-    ) -> None:
+    def __init__(self, hass: HomeAssistant, store: MaintenanceStore, item_id: str, name: str, unique_id: str) -> None:
         self.hass = hass
         self._store = store
         self._item_id = item_id
@@ -250,10 +258,8 @@ class ServiceBookSensor(SensorEntity):
     @property
     def native_value(self) -> int:
         return sum(
-            1
-            for item in self._store.items.values()
-            if (signature := _item_problem_signature(self.hass, item))
-            and signature != item.acknowledged_signature
+            1 for item in self._store.items.values()
+            if (signature := _item_problem_signature(self.hass, item)) and signature != item.acknowledged_signature
         )
 
     @property
