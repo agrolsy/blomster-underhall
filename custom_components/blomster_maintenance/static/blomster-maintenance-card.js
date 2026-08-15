@@ -44,7 +44,7 @@ class BlomsterMaintenanceCard extends HTMLElement {
   _entityIds() {
     if (Array.isArray(this._config.entities) && this._config.entities.length) return this._config.entities;
     return Object.entries(this._hass?.states || {})
-      .filter(([entityId, state]) => entityId.startsWith("sensor.") && state.attributes?.item_id && Array.isArray(state.attributes?.history))
+      .filter(([entityId, state]) => entityId.startsWith("sensor.") && state.attributes?.maintenance_domain === "blomster_maintenance" && Array.isArray(state.attributes?.history))
       .map(([entityId]) => entityId);
   }
 
@@ -156,14 +156,14 @@ class BlomsterMaintenanceManagerCard extends HTMLElement {
 
   _items() {
     return Object.entries(this._hass?.states || {})
-      .filter(([entityId, state]) => entityId.startsWith("sensor.") && state.attributes?.item_id && Array.isArray(state.attributes?.history))
+      .filter(([entityId, state]) => entityId.startsWith("sensor.") && state.attributes?.maintenance_domain === "blomster_maintenance" && Array.isArray(state.attributes?.history))
       .map(([entityId, state]) => ({ entityId, state }))
       .sort((a, b) => (a.state.attributes.friendly_name || a.entityId).localeCompare(b.state.attributes.friendly_name || b.entityId, "sv"));
   }
 
   _numericSensors() {
     return Object.entries(this._hass?.states || {})
-      .filter(([entityId, state]) => entityId.startsWith("sensor.") && !Number.isNaN(Number(state.state)) && !state.attributes?.item_id)
+      .filter(([entityId, state]) => entityId.startsWith("sensor.") && !Number.isNaN(Number(state.state)) && state.attributes?.maintenance_domain !== "blomster_maintenance")
       .sort((a, b) => (a[1].attributes.friendly_name || a[0]).localeCompare(b[1].attributes.friendly_name || b[0], "sv"));
   }
 
