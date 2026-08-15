@@ -66,7 +66,9 @@ CONFIGURE_SCHEMA = vol.Schema({
     vol.Optional(ATTR_MODEL): cv.string,
     vol.Optional(ATTR_SERIAL_NUMBER): cv.string,
     vol.Optional(ATTR_INSTALLED_AT): cv.string,
-    vol.Optional(ATTR_INTERVAL_TYPE): vol.In(["days", "liters", "hours", "starts"]),
+    vol.Optional(ATTR_INTERVAL_TYPE): vol.In([
+        "days", "weeks", "months", "years", "meter", "liters", "hours", "starts"
+    ]),
     vol.Optional(ATTR_INTERVAL_VALUE): vol.All(vol.Coerce(float), vol.Range(min=0)),
     vol.Optional(ATTR_METER_ENTITY): cv.entity_id,
     vol.Optional(ATTR_MANUAL_URL): cv.string,
