@@ -307,9 +307,10 @@ class MaintenanceSensor(SensorEntity):
     def extra_state_attributes(self):
         item = self._store.items.get(self._item_id)
         if not item:
-            return {"item_id": self._item_id, "registered": False, "history": []}
+            return {"maintenance_domain": DOMAIN, "item_id": self._item_id, "registered": False, "history": []}
         status = _item_status(self.hass, item)
         return {
+            "maintenance_domain": DOMAIN,
             "item_id": item.item_id,
             "registered": bool(item.events),
             "category": item.category,
