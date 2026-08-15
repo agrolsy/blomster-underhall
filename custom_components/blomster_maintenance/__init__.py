@@ -112,6 +112,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         meter_entity=entry.options.get(CONF_BLADE_USAGE_ENTITY, entry.data[CONF_BLADE_USAGE_ENTITY]),
         warning_entities=[],
     )
+    await store.async_configure_item(
+        item_id="water_filter",
+        name="Vattenfilter kol",
+        meter_entity="sensor.ackumulerad_vattenforbrukning",
+        warning_entities=[],
+    )
+    await store.async_configure_item(
+        item_id="water_filter_cotton",
+        name="Vattenfilter bomull",
+        meter_entity="sensor.ackumulerad_vattenforbrukning",
+        warning_entities=[],
+    )
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = store
 
     if not store.water.baseline_established:
