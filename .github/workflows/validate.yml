@@ -14,7 +14,7 @@ concurrency:
 jobs:
   tests:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [self-hosted, linux, x64, blomster-underhall-ci]
+    runs-on: [self-hosted, linux, x64, shared-ci]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -26,14 +26,14 @@ jobs:
 
   hassfest:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [self-hosted, linux, x64, blomster-underhall-ci]
+    runs-on: [self-hosted, linux, x64, shared-ci]
     steps:
       - uses: actions/checkout@v4
       - uses: home-assistant/actions/hassfest@master
 
   hacs:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [self-hosted, linux, x64, blomster-underhall-ci]
+    runs-on: [self-hosted, linux, x64, shared-ci]
     steps:
       - uses: actions/checkout@v4
       - uses: hacs/action@main
