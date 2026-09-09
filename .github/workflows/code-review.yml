@@ -1,0 +1,34 @@
+name: Kodgranskning
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '*/15 * * * *'
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches: [main]
+  pull_request_review:
+    types: [submitted, dismissed]
+  issue_comment:
+    types: [created, edited, deleted]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+  statuses: write
+
+jobs:
+  gate:
+    uses: agrolsy-org/wp-plugin-ci/.github/workflows/code-review-gate.yml@v1
+
+  reserve-review:
+    needs: gate
+    if: needs.gate.outputs.manual_prs != '' && needs.gate.outputs.manual_prs != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        pr: ${{ fromJSON(needs.gate.outputs.manual_prs) }}
+    uses: agrolsy-org/wp-plugin-ci/.github/workflows/codex-review.yml@v1
+    with:
+      pr: ${{ format('{0}', matrix.pr) }}
